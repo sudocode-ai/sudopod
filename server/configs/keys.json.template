@@ -1,0 +1,22 @@
+{
+  "openai": "FILLME",
+  "MODAL_TOKEN_ID" : "FILLME",
+  "MODAL_TOKEN_SECRET" : "FILLME"
+  "github": {
+    "dev": {
+      "client_id": "db1f4a3de2b5b53c5ed2",
+      "client_secret": "FILLME",
+      "redirect_uri": "http://0.0.0.0:3000/link_github"
+    },
+    "staging": {
+      "client_id": "cc9930b80122ca96c52a",
+      "client_secret": "FILLME",
+      "redirect_uri": "https://sudocode-staging.web.app/link_github"
+    },
+    "prod": {
+      "client_id": "2e1f8fd70ee6b1aea289",
+      "client_secret": "FILLME",
+      "redirect_uri": "https://sudocode.ai/link_github"
+    }
+  }
+}

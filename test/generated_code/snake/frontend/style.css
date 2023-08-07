@@ -1,0 +1,35 @@
+/* frontend/style.css */
+
+body {
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+}
+
+#game-area {
+    position: relative;
+    height: 600px;
+    width: 600px;
+    border: 1px solid #000;
+}
+
+.snake {
+    position: absolute;
+    background-color: #000;
+}
+
+.food {
+    position: absolute;
+    background-color: #f00;
+}
+
+#score-display {
+    margin-top: 20px;
+    font-size: 24px;
+}
+
+#game-over-display {
+    display: none;
+    margin-top: 20px;
+    font-size: 24px;
+    color: #f00;
+}

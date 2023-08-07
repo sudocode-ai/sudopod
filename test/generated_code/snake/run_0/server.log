@@ -1,0 +1,7 @@
+Server logs while test ran:
+output was:
+Request finished with status 200. (execution time: 14.7 ms, total latency: 2692.8 ms)
+Request finished with status 200. (execution time: 3.2 ms, total latency: 223.2 ms)
+Request finished with status 200. (execution time: 3.3 ms, total latency: 278.8 ms)
+
+stderr was:

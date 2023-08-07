@@ -1,5 +1,5 @@
-from google.cloud.devtools import cloudbuild_v1
 from google.cloud import storage
+from google.cloud.devtools import cloudbuild_v1
 import tarfile
 import os
 import subprocess
@@ -70,14 +70,36 @@ def deploy_to_cloud_run(project_id, image_name, service_name):
         print(f'Successfully deployed to Cloud Run: {output}')
 
 
+def create_domain_mapping(project_id, service_name, domain):
+    """Creates a domain mapping for the service."""
+    command = [
+        'gcloud', 'beta', 'run', 'domain-mappings', 'create',
+        '--service', service_name,
+        '--domain', domain,
+        '--project', project_id,
+        '--platform', 'managed',
+        '--region', 'us-west1'
+    ]
+
+    process = subprocess.Popen(command, stdout=subprocess.PIPE)
+    output, error = process.communicate()
+
+    if error:
+        print(f'Error occurred: {error}')
+    else:
+        print(f'Successfully created domain mapping: {output}')
+
+
 def main():
     project_id = 'sudopod-staging'
-    user_id = "1234-4321"
-    bucket_name = project_id + user_id
+    user_id = "123443211"
+    deployment_num = "4"
+    bucket_name = f"{project_id}-{user_id}-{deployment_num}"
     source_folder = "generated_code/test"
     tar_name = 'source.tar.gz'
     image_name = 'fastapi-server'
     service_name = 'fastapi-service'
+    domain = f"{user_id}-{deployment_num}.app.sudocode.ai"
 
     create_bucket(bucket_name)
     create_tar_file(source_folder, tar_name)
@@ -85,6 +107,7 @@ def main():
     create_build(project_id, bucket_name, tar_name)
 
     deploy_to_cloud_run(project_id, image_name, service_name)
+    create_domain_mapping(project_id, service_name, domain)
     os.remove(tar_name)
 
 if __name__ == '__main__':

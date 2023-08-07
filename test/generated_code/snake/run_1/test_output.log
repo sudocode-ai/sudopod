@@ -1,0 +1,9 @@
+Result of running test:
+Test Case 1: Get Game State
+Expected Result: The API should return the current game state, including the snake position, direction, length, food position, score, and game over status.
+Actual Result:  {"score":0,"game_over":false,"snake":{"position":[5,5],"direction":"up","length":1},"food":{"position":[10,10]}}
+Test Case 2: Update User Input
+Expected Result: The API should update the direction of the snake based on the user input provided in the request body.
+Actual Result:  {"message":"Direction updated successfully"}
+Checking if the direction of the snake has been updated to 'up'
+Test Case 2: Update User Input - Success
