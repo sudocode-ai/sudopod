@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Dict
 
 import logging
 from logging import StreamHandler
@@ -17,7 +18,7 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-def get_cred_config() -> dict[str, str]:
+def get_cred_config() -> Dict[str, str]:
     """Retrieve Cloud credentials stored in Secret Manager
     or default to environment variables."""
     secret = os.environ.get("CLOUD_SECRETS")
@@ -42,10 +43,10 @@ class Config(metaclass=Singleton):
                 self.keys = json.load(f)
             with open(os.path.join(curdir, "configs/config-dev.json")) as f:
                 self.configs = json.load(f)
-        # elif env == "staging":
-            # self.keys = get_cred_config()
-            # with open(os.path.join(curdir, "configs/config-staging.json")) as f:
-                # self.configs = json.load(f)
+        elif env == "staging":
+            self.keys = get_cred_config()
+            with open(os.path.join(curdir, "configs/config-staging.json")) as f:
+                self.configs = json.load(f)
         # elif env == "prod":
             # self.keys = get_cred_config()
             # with open(os.path.join(curdir, "configs/config-prod.json")) as f:
