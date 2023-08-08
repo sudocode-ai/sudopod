@@ -16,7 +16,7 @@ NOCACHE_ARG=false
 for arg in "$@"
 do
   case $arg in
-    production)
+    prod)
       PROD_ARG=true
       ;;
     --no-cache)
