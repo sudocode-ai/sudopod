@@ -22,14 +22,6 @@ class Instance():
     zone: str
     ssh_public_key: Optional[str] = None
 
-
-def get_username_from_pub_key(pub_key):
-    parts = pub_key.split(' ')
-    if len(parts) >= 3:
-        return parts[2]
-    return None
-
-
 def clean_string_for_gcp_instance(string):
     # Convert to lowercase
     string = string.lower()
@@ -52,8 +44,8 @@ def clean_string_for_gcp_instance(string):
 async def retrieve_session(session_id, public_key) -> ActiveSession:
     
     # If session exists, just retrieve it
-    active_session_doc = get_active_session_ref().document(session_id)
-    if active_session_doc.get().exists:
+    active_session_doc = get_active_session_ref().document(session_id).get()
+    if active_session_doc.exists:
         return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
     
     # First check for unallocated machines (not fully implemented yet)
@@ -112,11 +104,15 @@ async def create_instance(instance: Instance):
     }
     
     if instance.ssh_public_key:
-        username = get_username_from_pub_key(instance.ssh_public_key)
+        username = "sudopod" #TODO probably pass this in later on?
+        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
         instance_config["metadata"] = {
             "items": [{
                 "key": "ssh-keys",
                 "value": f"{username}:{instance.ssh_public_key}"
+            }, {
+                "key": "startup-script",
+                "value": startup_script
             }]
         }
 

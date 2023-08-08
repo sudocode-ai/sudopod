@@ -6,6 +6,6 @@
     "port": 8080,
     "allowed_origins": "*",
     "log_level": "debug",
-    "project_name": "sudopod-staging"
+    "project_name": "pods-staging"
     
 }

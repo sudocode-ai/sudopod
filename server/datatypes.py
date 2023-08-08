@@ -16,7 +16,7 @@ class SshKey:
 class ActiveSession:
     session_id: str
     created: int
-    ttl: str
+    ttl: int
     key_id: str
     zone: str
     instance_name: str
