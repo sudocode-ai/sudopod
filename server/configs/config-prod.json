@@ -4,7 +4,7 @@
     "auth_debug_mode": false,
     "__comment_port": "//Don't use 8080 or 8888 on a Mac as it somehow may conflict with the default ports of other systems.",
     "port": 8080,
-    "allowed_origins": "*",
+    "allowed_origins": ["https://sudocode-backend-wnkcqjhc2q-uw.a.run.app"],
     "log_level": "debug",
     "project_name": "pods-staging"
     

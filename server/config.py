@@ -47,10 +47,10 @@ class Config(metaclass=Singleton):
             self.keys = get_cred_config()
             with open(os.path.join(curdir, "configs/config-staging.json")) as f:
                 self.configs = json.load(f)
-        # elif env == "prod":
-            # self.keys = get_cred_config()
-            # with open(os.path.join(curdir, "configs/config-prod.json")) as f:
-                # self.configs = json.load(f)
+        elif env == "prod":
+            self.keys = get_cred_config()
+            with open(os.path.join(curdir, "configs/config-prod.json")) as f:
+                self.configs = json.load(f)
         # else:
             # raise Exception("wtf man no deploy env set")
         self.verbose = True

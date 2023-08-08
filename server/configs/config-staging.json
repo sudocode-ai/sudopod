@@ -1,10 +1,10 @@
 {
-    "firebase-key-path": "configs/sudocode-firebase-pkey.json",
+    "firebase-key-path": "/secrets/firebase-key",
     "debug_mode": false,
     "auth_debug_mode": false,
     "__comment_port": "//Don't use 8080 or 8888 on a Mac as it somehow may conflict with the default ports of other systems.",
     "port": 8080,
-    "allowed_origins": "*",
+    "allowed_origins": ["https://sudocode-backend-staging-3f44sluh7q-uw.a.run.app"],
     "log_level": "debug",
     "project_name": "pods-staging"
     

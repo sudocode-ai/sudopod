@@ -67,4 +67,4 @@ docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ARTIFACT_REGISTRY_PATH}
 docker push ${ARTIFACT_REGISTRY_PATH}
 
 # Deploy the updated Docker image to Cloud Run
-gcloud run deploy ${SERVICE_NAME} --image ${ARTIFACT_REGISTRY_PATH} --platform managed --region ${REGION} --no-allow-unauthenticated
+gcloud run deploy ${SERVICE_NAME} --image ${ARTIFACT_REGISTRY_PATH} --platform managed --region ${REGION} --allow-unauthenticated
