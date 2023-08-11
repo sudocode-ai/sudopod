@@ -82,7 +82,7 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     
 async def create_instance(instance: Instance):
     client = compute_v1.InstancesClient()
-    
+    from utils.images import PYTHON_3_11_4_PIPREQ_IMAGE
     # Create a new instance with the public key in its metadata
     instance_config = {
         "name": instance.name,
@@ -98,7 +98,7 @@ async def create_instance(instance: Instance):
             "boot": True,
             "auto_delete": True,
             "initialize_params": {
-                "source_image": "projects/debian-cloud/global/images/family/debian-12"
+                "source_image": PYTHON_3_11_4_PIPREQ_IMAGE
             }
         }]
     }
