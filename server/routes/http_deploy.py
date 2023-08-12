@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from config import Config
 from datatypes import ActiveSession
-from utils.deploy import retrieve_session
+from utils.deploy import retrieve_session, reset_instance
 from utils.firebase import get_active_session_ref
 
 CFG = Config()
@@ -31,6 +31,15 @@ async def connect_machine(
     if req.super_secret != "Arlington doodads popguns":
         raise HTTPException(status_code=403, detail="Unauthorized")
     active_session: ActiveSession = await retrieve_session(req.session_id, req.public_key)
+    response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
+    return response
+    
+
+@deploy_http_router.post("/session/{session_id}/reset", status_code=200)
+async def connect_machine(
+    session_id: str
+):
+    active_session: ActiveSession = await reset_instance(session_id)
     response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
     return response
     

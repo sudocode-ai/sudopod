@@ -62,16 +62,17 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     instance.zone = CFG.zone
     instance.ssh_public_key = public_key
     
-    host_ip, ssh_user = await create_instance(instance)
+    host_ip, ssh_user = await _create_instance(instance)
     
     #TODO Replace TTL with some config or param?
     active_session = ActiveSession(
         session_id=session_id,
         created=int(time.time() * 1000),
         ttl=int(time.time() * 1000 + (1000*60*60*2)),
-        key_id=public_key,
+        public_key=public_key,
         zone=instance.zone,
         instance_name=instance.name,
+        project=instance.project,
         ssh_user=ssh_user,
         host_ip=host_ip
     )
@@ -80,7 +81,7 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     return active_session
     
     
-async def create_instance(instance: Instance):
+async def _create_instance(instance: Instance):
     client = compute_v1.InstancesClient()
     from utils.images import PYTHON_3_11_4_PIPREQ_IMAGE
     # Create a new instance with the public key in its metadata
@@ -154,6 +155,49 @@ async def create_instance(instance: Instance):
             # Wait for a few seconds before polling again
             await asyncio.sleep(3)
 
+
+async def _reset_instance(instance: Instance):
+    client = compute_v1.InstancesClient()
+
+    # Delete the existing instance
+    delete_operation = client.delete(
+        project=instance.project, 
+        zone=instance.zone, 
+        instance=instance.name
+    )
+    delete_operation.result()  # Wait for the operation to complete
+
+    # Recreate the instance
+    host_ip, ssh_user = await _create_instance(instance)
+    return host_ip, ssh_user
+    
+async def reset_instance(session_id):
+    active_session_doc = get_active_session_ref().document(session_id).get()
+    if not active_session_doc.exists:
+        raise Exception(f"Can't reset non existing instance {session_id}")
+    active_session: ActiveSession = from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+   
+    instance = Instance()
+    instance.name = active_session.instance_name
+    instance.project = active_session.project
+    instance.zone = active_session.zone
+    instance.ssh_public_key = active_session.public_key
+    
+    host_ip, ssh_user = await _reset_instance(instance)
+    active_session = ActiveSession(
+        session_id=session_id,
+        created=int(time.time() * 1000),
+        ttl=int(time.time() * 1000 + (1000*60*60*2)),
+        public_key=instance.ssh_public_key,
+        zone=instance.zone,
+        project=instance.project,
+        instance_name=instance.name,
+        ssh_user=ssh_user,
+        host_ip=host_ip
+    )
+    
+    get_active_session_ref().document(session_id).set(dataclasses.asdict(active_session))
+    return active_session
 
 
 def kill_instance(instance: Instance):

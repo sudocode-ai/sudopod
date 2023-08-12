@@ -17,9 +17,10 @@ class ActiveSession:
     session_id: str
     created: int
     ttl: int
-    key_id: str
+    public_key: str
     zone: str
     instance_name: str
+    project: str
     host_ip: str
     ssh_user: str
 
