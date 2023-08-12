@@ -31,6 +31,6 @@ async def connect_machine(
     if req.super_secret != "Arlington doodads popguns":
         raise HTTPException(status_code=403, detail="Unauthorized")
     active_session: ActiveSession = await retrieve_session(req.session_id, req.public_key)
-    response = {"status": "success", "ssh_host": active_session.host_ip, "ssh_user": active_session.ssh_user}
+    response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
     return response
     
