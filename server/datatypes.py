@@ -16,7 +16,7 @@ class SshKey:
 class ActiveSession:
     session_id: str
     created: int
-    ttl: int
+    expiry_date: int
     public_key: str
     zone: str
     instance_name: str

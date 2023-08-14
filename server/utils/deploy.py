@@ -68,7 +68,7 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     active_session = ActiveSession(
         session_id=session_id,
         created=int(time.time() * 1000),
-        ttl=int(time.time() * 1000 + (1000*60*60*2)),
+        expiry_date=int(time.time() * 1000 + (1000*60*60*2)),
         public_key=public_key,
         zone=instance.zone,
         instance_name=instance.name,
@@ -83,7 +83,7 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     
 async def _create_instance(instance: Instance):
     client = compute_v1.InstancesClient()
-    from utils.images import PYTHON_3_11_4_PIPREQ_IMAGE
+    from utils.images import SUPED_UP_IMAGE_V1
     # Create a new instance with the public key in its metadata
     instance_config = {
         "name": instance.name,
@@ -99,7 +99,7 @@ async def _create_instance(instance: Instance):
             "boot": True,
             "auto_delete": True,
             "initialize_params": {
-                "source_image": PYTHON_3_11_4_PIPREQ_IMAGE
+                "source_image": SUPED_UP_IMAGE_V1
             }
         }]
     }
@@ -187,7 +187,7 @@ async def reset_instance(session_id):
     active_session = ActiveSession(
         session_id=session_id,
         created=int(time.time() * 1000),
-        ttl=int(time.time() * 1000 + (1000*60*60*2)),
+        expiry_date=int(time.time() * 1000 + (1000*60*60*2)),
         public_key=instance.ssh_public_key,
         zone=instance.zone,
         project=instance.project,
@@ -203,5 +203,4 @@ async def reset_instance(session_id):
 def kill_instance(instance: Instance):
     print("TODO")
     # Make sure to remove ssh keys
-
 

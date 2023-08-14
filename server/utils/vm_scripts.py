@@ -34,3 +34,13 @@ sudo make altinstall
 # Create a symbolic link to python3.11
 sudo ln -s /usr/local/bin/python3.11 /usr/local/bin/python
 """
+
+# We also installed pip but idk how
+
+SETUP_SUPER_V1 = """
+sudo apt-get install libpq-dev
+sudo pip install pytest mock coverage loguru ipdb pylint gunicorn uvicorn docker black flake8 pipenv python-dotenv flask django fastapi sqlalchemy psycopg2 mongoengine celery pipreqs
+
+sudo apt install nodejs npm -y
+sudo npm install -g npx
+"""
