@@ -10,3 +10,5 @@ sudo apt install nodejs npm -y
 sudo npm install -g npx
 """
 SUPED_UP_IMAGE_V1 = f"projects/pods-staging/global/images/suped-up-image-v1"
+
+SUPED_UP_IMAGE_V2 = f"projects/pods-staging/global/images/suped-up-image-v2"

@@ -44,3 +44,13 @@ sudo pip install pytest mock coverage loguru ipdb pylint gunicorn uvicorn docker
 sudo apt install nodejs npm -y
 sudo npm install -g npx
 """
+
+
+SETUP_SUPER_V2 = """
+sudo apt-get install libpq-dev
+sudo pip install pytest mock coverage loguru ipdb pylint gunicorn uvicorn docker black flake8 pipenv python-dotenv flask django fastapi sqlalchemy psycopg2 mongoengine celery pipreqs
+
+sudo apt install nodejs npm -y
+sudo npm install -g npx
+sudo pip install pytest-timeout 
+"""
