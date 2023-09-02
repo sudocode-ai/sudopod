@@ -83,7 +83,7 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     
 async def _create_instance(instance: Instance):
     client = compute_v1.InstancesClient()
-    from utils.images import SUPED_UP_IMAGE_V1
+    from utils.images import SUPED_UP_IMAGE_V2
     # Create a new instance with the public key in its metadata
     instance_config = {
         "name": instance.name,
@@ -99,7 +99,7 @@ async def _create_instance(instance: Instance):
             "boot": True,
             "auto_delete": True,
             "initialize_params": {
-                "source_image": SUPED_UP_IMAGE_V1
+                "source_image": SUPED_UP_IMAGE_V2
             }
         }]
     }
