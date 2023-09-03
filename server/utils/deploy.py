@@ -7,6 +7,7 @@ from google.api_core import operation
 import re
 import time
 from typing import Optional
+import uuid
 
 from datatypes import ActiveSession, UnallocatedMachineCount
 from utils.firebase import get_active_session_ref, get_unallocated_machine_count_ref
@@ -55,9 +56,10 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
         if len(unallocated_machine_count.unallocated_machines) > 0:
             raise Exception("This isn't implemented yet lol")
     
+    instance_uuid = uuid.uuid4()
     # No active session, no unallocated machines, start a new one up
     instance = Instance()
-    instance.name = f"a-{session_id}"
+    instance.name = f"a-{instance_uuid}"
     instance.project = CFG.configs["project_name"]
     instance.zone = CFG.zone
     instance.ssh_public_key = public_key
