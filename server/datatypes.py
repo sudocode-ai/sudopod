@@ -15,11 +15,12 @@ class SshKey:
 @dataclass
 class ActiveSession:
     session_id: str
+    idempotency_key: str
     created: int
     expiry_date: int
     public_key: str
     zone: str
-    instance_name: str
+    instance_name: Optional[str]
     project: str
     host_ip: str
     ssh_user: str

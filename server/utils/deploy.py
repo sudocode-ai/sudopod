@@ -42,12 +42,21 @@ def clean_string_for_gcp_instance(string):
     return string
 
 
-async def retrieve_session(session_id, public_key) -> ActiveSession:
+async def retrieve_session(session_id: str, public_key: str, idempotency_key: str) -> ActiveSession:
     
     # If session exists, just retrieve it
     active_session_doc = get_active_session_ref().document(session_id).get()
     if active_session_doc.exists:
-        return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+        active_session: ActiveSession = active_session_doc.to_dict()
+        
+        #TODO: Deprecate this branch
+        if not active_session.idempotency_key:
+            logger.info(f"Deprecated session without idempotency key {session_id}")
+            return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+        if active_session.idempotency_key == idempotency_key:
+            logger.info(f"Found matching session for {session_id}")
+            return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+        logger.info(f"Idempotency key did not match for session {session_id} and idempotency key {idempotency_key}, creating new active session")
     
     # First check for unallocated machines (not fully implemented yet)
     unallocated_machine_count_doc = next(iter(get_unallocated_machine_count_ref().limit(1).stream()), None)
@@ -69,6 +78,7 @@ async def retrieve_session(session_id, public_key) -> ActiveSession:
     #TODO Replace TTL with some config or param?
     active_session = ActiveSession(
         session_id=session_id,
+        idempotency_key=idempotency_key,
         created=int(time.time() * 1000),
         expiry_date=int(time.time() * 1000 + (1000*60*60*2)),
         public_key=public_key,
