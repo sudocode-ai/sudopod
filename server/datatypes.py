@@ -15,7 +15,7 @@ class SshKey:
 @dataclass
 class ActiveSession:
     session_id: str
-    idempotency_key: str
+    idempotency_key: Optional[str]
     created: int
     expiry_date: int
     public_key: str

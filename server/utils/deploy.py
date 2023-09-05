@@ -3,7 +3,7 @@ from dacite import from_dict
 import asyncio
 import dataclasses
 from google.cloud import compute_v1
-from google.api_core import operation
+from google.api_core import exceptions
 import re
 import time
 from typing import Optional
@@ -171,13 +171,15 @@ async def _create_instance(instance: Instance):
 async def _reset_instance(instance: Instance):
     client = compute_v1.InstancesClient()
 
-    # Delete the existing instance
-    delete_operation = client.delete(
-        project=instance.project, 
-        zone=instance.zone, 
-        instance=instance.name
-    )
-    delete_operation.result()  # Wait for the operation to complete
+    try:
+        delete_operation = client.delete(
+            project=instance.project, 
+            zone=instance.zone, 
+            instance=instance.name
+        )
+        delete_operation.result()  # Wait for the operation to complete
+    except exceptions.NotFound as e:
+        logger.info(f"Couldn't delete resource, continuing: {e}")  # Log the error message
 
     # Recreate the instance
     host_ip, ssh_user = await _create_instance(instance)
@@ -198,6 +200,7 @@ async def reset_instance(session_id):
     host_ip, ssh_user = await _reset_instance(instance)
     active_session = ActiveSession(
         session_id=session_id,
+        idempotency_key=active_session.idempotency_key,
         created=int(time.time() * 1000),
         expiry_date=int(time.time() * 1000 + (1000*60*60*2)),
         public_key=instance.ssh_public_key,
