@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from config import Config
 from datatypes import ActiveSession
 from utils.deploy import retrieve_session, reset_instance
-from utils.firebase import get_active_session_ref
+from utils.periodic_tasks import cleanup_vms, setup_vms
 
 CFG = Config()
 logger = CFG.logger
@@ -45,12 +45,18 @@ async def connect_machine(
     return response
     
 
+class PeriodicTaskReq(BaseModel):
+    super_secret: str
+    
 @deploy_http_router.post("/setup_teardown_vms", status_code=200)
-async def connect_machine(
-    session_id: str,
+async def setup_teardown_vms(
+    req: PeriodicTaskReq
 ):
-    active_session: ActiveSession = await reset_instance(session_id)
-    response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
+    if req.super_secret != "Arlington doodads popguns":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    await cleanup_vms()
+    await setup_vms()
+    response = {"status": "success"}
     return response
     
 

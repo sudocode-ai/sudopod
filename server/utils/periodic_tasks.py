@@ -5,7 +5,7 @@ from typing import List
 import uuid
 
 from datatypes import UnallocatedMachine, RunningMachine
-from deploy import delete_instance, Instance, create_instance
+from utils.deploy import delete_instance, Instance, create_instance
 from utils.firebase import get_unallocated_machine_ref, get_running_machine_ref
 
 from config import Config
@@ -44,12 +44,13 @@ def _num_vms_needed():
         
 async def setup_vms():
     for i in range(_num_vms_needed()):
-        instance: Instance = Instance()
-        instance.name = f"a-{uuid.uuid4()}"
-        instance.project = CFG.configs["project_name"]
-        instance.zone = CFG.zone
+        instance: Instance = Instance(
+            name=f"a-{uuid.uuid4()}",
+            project=CFG.configs["project_name"],
+            zone=CFG.zone,
+        )
         
-        external_ip, = await create_instance(instance, machine_type="n1-standard-1")
+        external_ip, username = await create_instance(instance, machine_type="n1-standard-1")
         
         unallocated_machine: UnallocatedMachine = UnallocatedMachine(
             id=instance.name,

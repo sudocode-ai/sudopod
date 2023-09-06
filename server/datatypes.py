@@ -33,7 +33,7 @@ class ActiveSession:
     project: str
     host_ip: str
     ssh_user: str
-    expiry_date: Optional[int] #DEPRECATED
+    expiry_date: Optional[int] = 0 #DEPRECATED
 
 
 @dataclass

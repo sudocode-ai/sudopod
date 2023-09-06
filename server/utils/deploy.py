@@ -4,12 +4,14 @@ import asyncio
 import dataclasses
 from google.cloud import compute_v1
 from google.api_core import exceptions
+from google.cloud.compute_v1.types import Metadata
 import re
 import time
 from typing import Optional
 import uuid
 
 from datatypes import ActiveSession, UnallocatedMachine, RunningMachine
+from pydantic import BaseModel
 from utils.firebase import get_active_session_ref, get_running_machine_ref, get_unallocated_machine_ref, get_db
 
 from config import Config
@@ -17,7 +19,7 @@ CFG = Config()
 logger = CFG.logger
 
 
-class Instance():
+class Instance(BaseModel):
     name: str
     project: str
     zone: str
@@ -52,12 +54,11 @@ async def _add_ssh_key(instance: Instance, ssh_public_key: str):
     current_metadata = client.get(project=instance.project, zone=instance.zone, instance=instance.name).metadata
 
     # Add the new SSH key
-    items = current_metadata.get('items', [])
+    items = current_metadata.items
     items.append({
         "key": "ssh-keys",
         "value": ssh_keys
     })
-    current_metadata['items'] = items
 
     # Update the instance with the new metadata
     operation_obj = client.set_metadata(
@@ -66,6 +67,7 @@ async def _add_ssh_key(instance: Instance, ssh_public_key: str):
         instance=instance.name, 
         metadata_resource=current_metadata
     )
+    return username
 
 
 async def retrieve_session(session_id: str, public_key: str, idempotency_key: str) -> ActiveSession:
@@ -73,21 +75,21 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
     # If session exists, just retrieve it
     active_session_doc = get_active_session_ref().document(session_id).get()
     if active_session_doc.exists:
-        active_session: ActiveSession = active_session_doc.to_dict()
+        active_session: ActiveSession = from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
         
         #TODO: Deprecate this branch once we require idempotency key
         if not active_session.idempotency_key:
             logger.info(f"Deprecated session without idempotency key {session_id}")
-            return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+            return active_session
         if active_session.idempotency_key == idempotency_key:
             logger.info(f"Found matching session for {session_id}")
-            return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+            return active_session
         logger.info(f"Idempotency key did not match for session {session_id} and idempotency key {idempotency_key}, creating new active session")
     
     # First check for unallocated machines
-    unallocated_machine_doc = get_unallocated_machine_ref().order_by('created').limit(1).get()
+    unallocated_machine_doc = get_unallocated_machine_ref().order_by('created').limit(1).get()[0]
     if unallocated_machine_doc:
-        unallocated_machine: UnallocatedMachine = unallocated_machine_doc.to_dict()
+        unallocated_machine: UnallocatedMachine = from_dict(data_class=UnallocatedMachine, data=unallocated_machine_doc.to_dict())
         logger.info(f"Found an unallocated machine for use, id: {unallocated_machine.id}")
         instance = Instance(
             name=unallocated_machine.instance_name,
@@ -97,7 +99,7 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
         
         batch = get_db().batch()
         # Convert to an active machine
-        running_machine_id = uuid.uuid4()
+        running_machine_id = str(uuid.uuid4())
         running_machine: RunningMachine = RunningMachine(
             session_id=session_id,
             created=int(time.time() * 1000),
@@ -111,7 +113,7 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
         batch.commit()
         
         # Prep the machine. if this operation fails, that's okay. That means the machine will be inaccessible, meaning it'll be restarted when someone tries to use it.
-        _add_ssh_key(instance, public_key)
+        username = await _add_ssh_key(instance, public_key)
         
         active_session = ActiveSession(
             session_id=session_id,
@@ -121,7 +123,7 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
             zone=instance.zone,
             instance_name=instance.name,
             project=instance.project,
-            ssh_user=ssh_user,
+            ssh_user=username,
             host_ip=unallocated_machine.host_ip,
         )
         
@@ -129,7 +131,7 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
         return active_session
         
     
-    instance_uuid = uuid.uuid4()
+    instance_uuid = str(uuid.uuid4())
     # No active session, no unallocated machines, start a new one up
     instance = Instance()
     instance.name = f"a-{instance_uuid}"
@@ -178,6 +180,7 @@ async def create_instance(instance: Instance, machine_type: str="n1-standard-1")
         }]
     }
     
+    username = None
     if instance.ssh_public_key:
         username = "sudopod" #TODO probably pass this in later on?
         startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
@@ -247,7 +250,7 @@ async def delete_instance(instance: Instance, error_on_failure=True):
 async def _reset_instance(instance: Instance):
     delete_instance(instance, error_on_failure=False)
     # Recreate the instance
-    host_ip, ssh_user = await _create_instance(instance)
+    host_ip, ssh_user = await create_instance(instance)
     return host_ip, ssh_user
     
 async def reset_instance(session_id):
