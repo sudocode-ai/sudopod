@@ -13,29 +13,36 @@ class SshKey:
 
 
 @dataclass
+class RunningMachine:
+    session_id: str
+    created: int
+    expiry_date: int
+    project: str
+    zone: str
+    instance_name: str
+
+
+@dataclass
 class ActiveSession:
     session_id: str
     idempotency_key: Optional[str]
     created: int
-    expiry_date: int
     public_key: str
     zone: str
     instance_name: Optional[str]
     project: str
     host_ip: str
     ssh_user: str
+    expiry_date: Optional[int] #DEPRECATED
 
-
-@dataclass
-class UnallocatedMachineCount:
-    uid: str
-    created: int
-    unallocated_machines: List[str] = field(default_factory=list)
-    
 
 @dataclass
 class UnallocatedMachine:
-    uid: str
+    id: str
     created: int
-    machine_type: str
+    project: str
     zone: str
+    instance_name: str
+    zone: str
+    machine_type: str
+    host_ip: str

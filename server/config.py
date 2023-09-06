@@ -81,3 +81,5 @@ class Config(metaclass=Singleton):
             "timbaker@sudocode.ai",
         ]
         self.zone = "us-west1-a"
+
+        self.min_unallocated_vms = 2

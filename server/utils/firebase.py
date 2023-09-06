@@ -25,8 +25,8 @@ print("initialized firebase")
 db = firestore.client()
 ssh_key_ref = db.collection("ssh_key")
 active_session_ref = db.collection("active_session")
-unallocated_machine_count_ref = db.collection("unallocated_machine_count")
 unallocated_machine_ref = db.collection("unallocated_machine")
+running_machine_ref = db.collection("running_machine")
 print("db initialized")
 
 
@@ -37,9 +37,11 @@ def get_ssh_key_ref():
 def get_active_session_ref():
     return active_session_ref
 
-def get_unallocated_machine_count_ref():
-    return unallocated_machine_count_ref
-
 def get_unallocated_machine_ref():
     return unallocated_machine_ref
 
+def get_running_machine_ref():
+    return running_machine_ref
+
+def get_db():
+    return db

@@ -44,3 +44,13 @@ async def connect_machine(
     response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
     return response
     
+
+@deploy_http_router.post("/setup_teardown_vms", status_code=200)
+async def connect_machine(
+    session_id: str,
+):
+    active_session: ActiveSession = await reset_instance(session_id)
+    response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
+    return response
+    
+
