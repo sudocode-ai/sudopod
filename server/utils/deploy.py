@@ -87,7 +87,7 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
         logger.info(f"Idempotency key did not match for session {session_id} and idempotency key {idempotency_key}, creating new active session")
     
     # First check for unallocated machines
-    unallocated_machine_doc = get_unallocated_machine_ref().order_by('created').limit(1).get()[0]
+    unallocated_machine_doc = get_unallocated_machine_ref().where('project', '==', CFG.configs["project_name"]).order_by('created').limit(1).get()[0]
     if unallocated_machine_doc:
         unallocated_machine: UnallocatedMachine = from_dict(data_class=UnallocatedMachine, data=unallocated_machine_doc.to_dict())
         logger.info(f"Found an unallocated machine for use, id: {unallocated_machine.id}")

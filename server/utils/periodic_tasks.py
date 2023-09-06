@@ -36,7 +36,7 @@ async def cleanup_vms():
         
         
 def _num_vms_needed():
-    docs = get_unallocated_machine_ref().limit(CFG.min_unallocated_vms+1).get()
+    docs = get_unallocated_machine_ref().where('project', '==', CFG.configs["project_name"]).limit(CFG.min_unallocated_vms+1).get()
     if len(docs) >= CFG.min_unallocated_vms:
         return 0
     else:
