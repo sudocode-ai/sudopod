@@ -23,7 +23,7 @@ async def cleanup_vms():
 
     # Delete the documents
     for expired_machine_doc in expired_machines_doc:
-        expired_machine: RunningMachine = expired_machine_doc.to_dict()
+        expired_machine: RunningMachine = from_dict(data_class=RunningMachine, data=expired_machine_doc.to_dict())
         print(f'Deleting machine {expired_machine.session_id} and id {expired_machine_doc.id}')
         
         instance: Instance = Instance(

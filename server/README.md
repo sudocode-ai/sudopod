@@ -44,3 +44,13 @@ Note that Randy had to manually update sudopod-staging and sudopod-prod, so that
 Related:
 ![Alt text](image.png)
 
+
+## Production Deploys
+
+Just run `./deploy.sh --prod`
+
+### Cron jobs
+
+Note that we have a cron job running in staging/prod for setting up/tearing down pods.
+Here is the staging version:
+https://console.cloud.google.com/cloudscheduler/jobs/edit/us-west1/sudopod-cron?project=pods-staging&supportedpurview=project 
