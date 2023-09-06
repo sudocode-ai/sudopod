@@ -4,20 +4,22 @@ import asyncio
 import dataclasses
 from google.cloud import compute_v1
 from google.api_core import exceptions
+from google.cloud.compute_v1.types import Metadata
 import re
 import time
 from typing import Optional
 import uuid
 
-from datatypes import ActiveSession, UnallocatedMachineCount
-from utils.firebase import get_active_session_ref, get_unallocated_machine_count_ref
+from datatypes import ActiveSession, UnallocatedMachine, RunningMachine
+from pydantic import BaseModel
+from utils.firebase import get_active_session_ref, get_running_machine_ref, get_unallocated_machine_ref, get_db
 
 from config import Config
 CFG = Config()
 logger = CFG.logger
 
 
-class Instance():
+class Instance(BaseModel):
     name: str
     project: str
     zone: str
@@ -42,30 +44,94 @@ def clean_string_for_gcp_instance(string):
     return string
 
 
+async def _add_ssh_key(instance: Instance, ssh_public_key: str):
+    client = compute_v1.InstancesClient()
+    
+    username = "sudopod" #TODO probably pass this in later on?
+    ssh_keys = f"{username}:{ssh_public_key}"
+    
+    # Get the current metadata
+    current_metadata = client.get(project=instance.project, zone=instance.zone, instance=instance.name).metadata
+
+    # Add the new SSH key
+    items = current_metadata.items
+    items.append({
+        "key": "ssh-keys",
+        "value": ssh_keys
+    })
+
+    # Update the instance with the new metadata
+    operation_obj = client.set_metadata(
+        project=instance.project, 
+        zone=instance.zone, 
+        instance=instance.name, 
+        metadata_resource=current_metadata
+    )
+    return username
+
+
 async def retrieve_session(session_id: str, public_key: str, idempotency_key: str) -> ActiveSession:
     
     # If session exists, just retrieve it
     active_session_doc = get_active_session_ref().document(session_id).get()
     if active_session_doc.exists:
-        active_session: ActiveSession = active_session_doc.to_dict()
+        active_session: ActiveSession = from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
         
-        #TODO: Deprecate this branch
+        #TODO: Deprecate this branch once we require idempotency key
         if not active_session.idempotency_key:
             logger.info(f"Deprecated session without idempotency key {session_id}")
-            return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+            return active_session
         if active_session.idempotency_key == idempotency_key:
             logger.info(f"Found matching session for {session_id}")
-            return from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
+            return active_session
         logger.info(f"Idempotency key did not match for session {session_id} and idempotency key {idempotency_key}, creating new active session")
     
-    # First check for unallocated machines (not fully implemented yet)
-    unallocated_machine_count_doc = next(iter(get_unallocated_machine_count_ref().limit(1).stream()), None)
-    if unallocated_machine_count_doc is not None:
-        unallocated_machine_count = unallocated_machine_count_doc.to_dict()
-        if len(unallocated_machine_count.unallocated_machines) > 0:
-            raise Exception("This isn't implemented yet lol")
+    # First check for unallocated machines
+    unallocated_machine_doc = get_unallocated_machine_ref().order_by('created').limit(1).get()[0]
+    if unallocated_machine_doc:
+        unallocated_machine: UnallocatedMachine = from_dict(data_class=UnallocatedMachine, data=unallocated_machine_doc.to_dict())
+        logger.info(f"Found an unallocated machine for use, id: {unallocated_machine.id}")
+        instance = Instance(
+            name=unallocated_machine.instance_name,
+            project=unallocated_machine.project,
+            zone=unallocated_machine.zone,
+        )
+        
+        batch = get_db().batch()
+        # Convert to an active machine
+        running_machine_id = str(uuid.uuid4())
+        running_machine: RunningMachine = RunningMachine(
+            session_id=session_id,
+            created=int(time.time() * 1000),
+            expiry_date=int(time.time() * 1000 + (1000*60*60*2)), # 2 hour delay TODO add some param for TTL
+            project=unallocated_machine.project,
+            zone=unallocated_machine.zone,
+            instance_name=unallocated_machine.instance_name,
+            )
+        batch.set(get_running_machine_ref().document(running_machine_id), dataclasses.asdict(running_machine))
+        batch.delete(unallocated_machine_doc.reference)
+        batch.commit()
+        
+        # Prep the machine. if this operation fails, that's okay. That means the machine will be inaccessible, meaning it'll be restarted when someone tries to use it.
+        username = await _add_ssh_key(instance, public_key)
+        
+        active_session = ActiveSession(
+            session_id=session_id,
+            idempotency_key=idempotency_key,
+            created=int(time.time() * 1000),
+            public_key=public_key,
+            zone=instance.zone,
+            instance_name=instance.name,
+            project=instance.project,
+            ssh_user=username,
+            host_ip=unallocated_machine.host_ip,
+        )
+        
+        get_active_session_ref().document(session_id).set(dataclasses.asdict(active_session))
+        return active_session
+        
     
-    instance_uuid = uuid.uuid4()
+    instance_uuid = str(uuid.uuid4())
     # No active session, no unallocated machines, start a new one up
     instance = Instance()
     instance.name = f"a-{instance_uuid}"
@@ -73,14 +139,12 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
     instance.zone = CFG.zone
     instance.ssh_public_key = public_key
     
-    host_ip, ssh_user = await _create_instance(instance)
+    host_ip, ssh_user = await create_instance(instance)
     
-    #TODO Replace TTL with some config or param?
     active_session = ActiveSession(
         session_id=session_id,
         idempotency_key=idempotency_key,
         created=int(time.time() * 1000),
-        expiry_date=int(time.time() * 1000 + (1000*60*60*2)),
         public_key=public_key,
         zone=instance.zone,
         instance_name=instance.name,
@@ -93,13 +157,13 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
     return active_session
     
     
-async def _create_instance(instance: Instance):
+async def create_instance(instance: Instance, machine_type: str="n1-standard-1"):
     client = compute_v1.InstancesClient()
     from utils.images import SUPED_UP_IMAGE_V2
     # Create a new instance with the public key in its metadata
     instance_config = {
         "name": instance.name,
-        "machine_type": f"zones/{instance.zone}/machineTypes/n1-standard-1",
+        "machine_type": f"zones/{instance.zone}/machineTypes/{machine_type}",
         "network_interfaces": [{
             "access_configs": [{
                 "type_": "ONE_TO_ONE_NAT",
@@ -116,6 +180,7 @@ async def _create_instance(instance: Instance):
         }]
     }
     
+    username = None
     if instance.ssh_public_key:
         username = "sudopod" #TODO probably pass this in later on?
         startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
@@ -167,10 +232,8 @@ async def _create_instance(instance: Instance):
             # Wait for a few seconds before polling again
             await asyncio.sleep(3)
 
-
-async def _reset_instance(instance: Instance):
+async def delete_instance(instance: Instance, error_on_failure=True):
     client = compute_v1.InstancesClient()
-
     try:
         delete_operation = client.delete(
             project=instance.project, 
@@ -179,10 +242,15 @@ async def _reset_instance(instance: Instance):
         )
         delete_operation.result()  # Wait for the operation to complete
     except exceptions.NotFound as e:
+        if error_on_failure:
+            raise e
         logger.info(f"Couldn't delete resource, continuing: {e}")  # Log the error message
 
+
+async def _reset_instance(instance: Instance):
+    delete_instance(instance, error_on_failure=False)
     # Recreate the instance
-    host_ip, ssh_user = await _create_instance(instance)
+    host_ip, ssh_user = await create_instance(instance)
     return host_ip, ssh_user
     
 async def reset_instance(session_id):
