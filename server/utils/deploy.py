@@ -78,7 +78,7 @@ async def retrieve_session(session_id: str, public_key: str, idempotency_key: st
         active_session: ActiveSession = from_dict(data_class=ActiveSession, data=active_session_doc.to_dict())
         
         #TODO: Deprecate this branch once we require idempotency key
-        if not active_session.idempotency_key:
+        if not active_session.idempotency_key and not idempotency_key:
             logger.info(f"Deprecated session without idempotency key {session_id}")
             return active_session
         if active_session.idempotency_key == idempotency_key:
