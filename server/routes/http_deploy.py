@@ -1,15 +1,12 @@
 from dacite import from_dict
 
-import dataclasses
-import time
-import uuid
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 
 from config import Config
 from datatypes import ActiveSession
-from utils.deploy import retrieve_session, reset_instance
+from utils.deploy import create_session, reset_instance, retrieve_session
 from utils.periodic_tasks import cleanup_vms, setup_vms
 
 CFG = Config()
@@ -30,8 +27,10 @@ async def connect_machine(
 ):
     if req.super_secret != "Arlington doodads popguns":
         raise HTTPException(status_code=403, detail="Unauthorized")
-    active_session: ActiveSession = await retrieve_session(req.session_id, req.public_key, req.idempotency_key)
-    response = {"status": "success", "host": active_session.host_ip, "ssh_user": active_session.ssh_user}
+    maybe_session: Optional[ActiveSession] = retrieve_session(req.session_id, req.idempotency_key)
+    if not maybe_session:
+        maybe_session: ActiveSession = await create_session(req.session_id, req.public_key, req.idempotency_key)
+    response = {"status": "success", "host": maybe_session.host_ip, "ssh_user": maybe_session.ssh_user}
     return response
     
 
