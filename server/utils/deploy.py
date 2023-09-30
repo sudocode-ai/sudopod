@@ -98,7 +98,7 @@ async def _convert_unallocated_machine(session_id: str, public_key: str, idempot
         running_machine: RunningMachine = RunningMachine(
             session_id=session_id,
             created=int(time.time() * 1000),
-            expiry_date=int(time.time() * 1000 + (1000*60*60*2)), # 2 hour delay TODO add some param for TTL
+            expiry_date=int(time.time() * 1000 + (1000*60*60*CFG.configs["machine_expiry_hours"])), # 2 hour delay TODO add some param for TTL
             project=unallocated_machine.project,
             zone=unallocated_machine.zone,
             instance_name=unallocated_machine.instance_name,

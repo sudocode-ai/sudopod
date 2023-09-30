@@ -6,6 +6,7 @@
     "port": 8520,
     "allowed_origins": "*",
     "log_level": "debug",
-    "project_name": "pods-staging"
+    "project_name": "pods-staging",
+    "machine_expiry_hours": 8 
     
 }

@@ -6,6 +6,7 @@
     "port": 8080,
     "allowed_origins": ["https://sudocode-backend-wnkcqjhc2q-uw.a.run.app"],
     "log_level": "debug",
-    "project_name": "pods-prod"
+    "project_name": "pods-prod",
+    "machine_expiry_hours": 4
     
 }
