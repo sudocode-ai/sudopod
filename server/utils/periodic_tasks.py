@@ -14,7 +14,7 @@ logger = CFG.logger
 
 
 MACHINE_COUNTER_ID = "12345"
-CONFIGURED_PROJECT = CFG.keys["project_name"]
+CONFIGURED_PROJECT = CFG.configs["project_name"]
 
 async def cleanup_vms():
     current_time = int(time.time() * 1000)
