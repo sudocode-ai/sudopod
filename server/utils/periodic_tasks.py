@@ -14,7 +14,7 @@ logger = CFG.logger
 
 
 MACHINE_COUNTER_ID = "12345"
-
+CONFIGURED_PROJECT = CFG.keys["project_name"]
 
 async def cleanup_vms():
     current_time = int(time.time() * 1000)
@@ -24,7 +24,10 @@ async def cleanup_vms():
     # Delete the documents
     for expired_machine_doc in expired_machines_doc:
         expired_machine: RunningMachine = from_dict(data_class=RunningMachine, data=expired_machine_doc.to_dict())
-        logger.debug(f'Deleting machine {expired_machine.session_id} and id {expired_machine_doc.id}')
+        if expired_machine.project != CONFIGURED_PROJECT:
+            logger.info(f"Machine project is {expired_machine.project} and server is setup for {CONFIGURED_PROJECT}, skipping")
+            continue
+        logger.info(f'Deleting machine {expired_machine.session_id} and id {expired_machine_doc.id} in {CONFIGURED_PROJECT}')
         
         instance: Instance = Instance(
             name=expired_machine.instance_name,
