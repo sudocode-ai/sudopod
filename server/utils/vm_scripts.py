@@ -1,4 +1,3 @@
-
 SETUP_PYTHON_SCRIPT = """
 #!/bin/bash
 
@@ -53,4 +52,15 @@ sudo pip install pytest mock coverage loguru ipdb pylint gunicorn uvicorn docker
 sudo apt install nodejs npm -y
 sudo npm install -g npx
 sudo pip install pytest-timeout 
+"""
+
+
+SETUP_JUPYTER_V1 = """
+which docker > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    sudo apt-get update
+    sudo apt-get install -y docker.io
+fi
+
+sudo docker pull us-west1-docker.pkg.dev/pods-staging/docker-images/sudopod-jupyter:latest
 """

@@ -1,6 +1,7 @@
-
 # Has python predownloaded, pip, and pipreq
-PYTHON_3_11_4_PIPREQ_IMAGE = f"projects/pods-staging/global/images/python-3-11-4-pipreqs"
+PYTHON_3_11_4_PIPREQ_IMAGE = (
+    f"projects/pods-staging/global/images/python-3-11-4-pipreqs"
+)
 
 """
 sudo apt-get install libpq-dev
@@ -12,3 +13,5 @@ sudo npm install -g npx
 SUPED_UP_IMAGE_V1 = f"projects/pods-staging/global/images/suped-up-image-v1"
 
 SUPED_UP_IMAGE_V2 = f"projects/pods-staging/global/images/suped-up-image-v2"
+
+JUPYTER_IMAGE_V1 = f"projects/pods-staging/global/images/jupyter-image-v1"

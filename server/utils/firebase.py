@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
-from firebase_admin import credentials, firestore, initialize_app
 
 from config import Config
+from firebase_admin import credentials, firestore, initialize_app
 
 CFG = Config()
 
@@ -34,14 +34,18 @@ print("db initialized")
 def get_ssh_key_ref():
     return ssh_key_ref
 
+
 def get_active_session_ref():
     return active_session_ref
+
 
 def get_unallocated_machine_ref():
     return unallocated_machine_ref
 
+
 def get_running_machine_ref():
     return running_machine_ref
+
 
 def get_db():
     return db

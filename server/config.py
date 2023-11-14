@@ -1,12 +1,12 @@
-import os
 import json
+import logging
+import os
+from logging import StreamHandler
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
 
-import logging
-from logging import StreamHandler
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 class Singleton(type):
@@ -52,7 +52,7 @@ class Config(metaclass=Singleton):
             with open(os.path.join(curdir, "configs/config-prod.json")) as f:
                 self.configs = json.load(f)
         # else:
-            # raise Exception("wtf man no deploy env set")
+        #    raise Exception("wtf man no deploy env set")
         self.verbose = True
         self.app.add_middleware(
             CORSMiddleware,
@@ -65,7 +65,7 @@ class Config(metaclass=Singleton):
         log_level = logging.INFO
         if self.configs["log_level"] == "debug":
             log_level = logging.DEBUG
-    
+
         logger = logging.getLogger(__name__)
         logger.setLevel(log_level)
         handler = StreamHandler()

@@ -2,8 +2,6 @@
 
 Example command to run: uvicorn app:app --host 0.0.0.0 --port 8420
 """
-import os
-
 from config import Config
 from routes.http_deploy import deploy_http_router
 

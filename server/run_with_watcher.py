@@ -1,15 +1,16 @@
-'''This file is used to watch for changes in the backend code and restart the server automatically'''
+"""This file is used to watch for changes in the backend code and restart the server automatically"""
 
 import os
 import subprocess
 import sys
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from subprocess import Popen
+
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 
 class FileChangeHandler(FileSystemEventHandler):
-    def __init__(self, command, process = None):
+    def __init__(self, command, process=None):
         super().__init__()
         self.command = command
         self.process = process
@@ -18,9 +19,9 @@ class FileChangeHandler(FileSystemEventHandler):
         file_extension = os.path.splitext(event.src_path)[1]
         if file_extension != ".py":
             return
-        if self.path_contains_directory(event.src_path, 'generated_files'):
+        if self.path_contains_directory(event.src_path, "generated_files"):
             return
-        print('Detected change on file:', event.src_path, 'reloading...')
+        print("Detected change on file:", event.src_path, "reloading...")
         if self.process is not None:
             self.terminate_process(self.process)
         self.process = self.start_process(self.command)
@@ -40,7 +41,6 @@ class FileChangeHandler(FileSystemEventHandler):
         normalized_path = os.path.normpath(path)
         directories = normalized_path.split(os.path.sep)
         return directory_name in directories
-
 
 
 if __name__ == "__main__":

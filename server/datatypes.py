@@ -1,10 +1,10 @@
 # TODO: Change to protobufs or some other serialization format.
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Set
+from typing import List, Optional, Set
 
 
-#For the future
+# For the future
 @dataclass
 class SshKey:
     org_id: str
@@ -33,7 +33,7 @@ class ActiveSession:
     project: str
     host_ip: str
     ssh_user: str
-    expiry_date: Optional[int] = 0 #DEPRECATED
+    expiry_date: Optional[int] = 0  # DEPRECATED
 
 
 @dataclass

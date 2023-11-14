@@ -59,7 +59,7 @@ else
   NO_CACHE=""
 fi
 
-docker build ${NO_CACHE} -f ${DOCKERFILE} -t ${IMAGE_NAME}:${IMAGE_TAG} .
+docker build ${NO_CACHE} -f ${DOCKERFILE} -t ${IMAGE_NAME}:${IMAGE_TAG} --platform linux/amd64 .
 
 # Tag and push the Docker image to Artifact Registry
 ARTIFACT_REGISTRY_PATH=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}
