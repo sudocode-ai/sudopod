@@ -22,10 +22,6 @@ from utils.firebase import (
 CFG = Config()
 logger = CFG.logger
 
-# Load string value of server/scripts/startup.sh as a constant.
-with open("server/scripts/startup.sh", "r") as f:
-    STARTUP_SCRIPT = f.read()
-
 
 class Instance(BaseModel):
     name: str
@@ -251,7 +247,7 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
     username = None
     if instance.ssh_public_key:
         username = "sudopod"  # TODO probably pass this in later on?
-        startup_script = f"#!/bin/bash\nusermod -aG sudo {username} \n{STARTUP_SCRIPT}"
+        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
         instance_config["metadata"] = {
             "items": [
                 {"key": "ssh-keys", "value": f"{username}:{instance.ssh_public_key}"},
