@@ -52,7 +52,7 @@ Related:
 
 ## Production Deploys
 
-Just run `./deploy.sh --prod`
+Just run `./deploy.sh prod`
 
 ### Cron jobs
 
