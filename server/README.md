@@ -33,6 +33,11 @@ After you've applied your changes, stop the VM via the GC console (just Stop it,
 
 Once stopped, Navigate [to GC](https://console.cloud.google.com/compute/images?tab=images&project=pods-staging&supportedpurview=project) in order to create an image. Name the image whatever you like, drop the name in `utils/images.py`, and use the VM from Step 2 as the base image.
 
+NOTE: For production, make sure to navigate to the image itself, and click "Add Principal" on the right:
+![Alt text](image-1.png)
+
+You should add the sudopod production principal. This can be found in the CloudRun page under Security.
+
 ### Step 4: Update Code to point to Template Image
 
 In `utils/deploy.py` update the "source_image" argument to point to the image name you want. Later on we should make this something we can select.
