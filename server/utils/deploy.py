@@ -7,11 +7,12 @@ from typing import Optional
 
 from config import Config
 from dacite import from_dict
-from datatypes import ActiveSession, RunningMachine, UnallocatedMachine
+from datatypes import ActiveSession, RunningMachine, SshKey, UnallocatedMachine
 from google.api_core import exceptions
 from google.api_core.exceptions import NotFound
 from google.cloud import compute_v1, firestore
 from pydantic import BaseModel
+from ssh.ssh_keys import gen_ssh_key
 from utils.firebase import (
     get_active_session_ref,
     get_db,
@@ -27,7 +28,8 @@ class Instance(BaseModel):
     name: str
     project: str
     zone: str
-    ssh_public_key: Optional[str] = None
+    ssh_public_key: Optional[str] = None #TODO REMOVE deprecated
+    ssh_key: Optional[SshKey] = None
 
 
 def clean_string_for_gcp_instance(string):
@@ -92,7 +94,7 @@ def retrieve_session(session_id: str, idempotency_key: str) -> Optional[ActiveSe
 
 
 async def _convert_unallocated_machine(
-    session_id: str, public_key: str, idempotency_key: str
+    session_id: str, public_key: Optional[str], idempotency_key: str
 ) -> Optional[ActiveSession]:
     """Attempt to convert an existing unallocated machine, and turn it into a running machine. If anything fails in the process, return None (create a new machine)"""
 
@@ -139,12 +141,20 @@ async def _convert_unallocated_machine(
     if not unallocated_machine:
         return None
 
-    # Prep the machine. if this operation fails, that's okay. That means the machine will be inaccessible, meaning it'll be restarted when someone tries to use it.
-    try:
-        username = await _add_ssh_key(unallocated_machine, public_key)
-    except NotFound as e:
-        logger.info(f"Failed to find machine for instance {unallocated_machine}")
-        return None
+
+    #DEPRECATED WORKFLOW
+    if public_key:
+        # Prep the machine. if this operation fails, that's okay. That means the machine will be inaccessible, meaning it'll be restarted when someone tries to use it.
+        try:
+            logger.info("adding public ssh key to user")
+            username = await _add_ssh_key(unallocated_machine, public_key)
+        except NotFound as e:
+            logger.info(f"Failed to find machine for instance {unallocated_machine}")
+            return None
+    elif unallocated_machine.ssh_key:
+        username = unallocated_machine.ssh_key.username
+    else:
+        raise Exception(f"No v1 public key or v2 ssh_key available when converting VM for session {session_id}")
 
     active_session = ActiveSession(
         session_id=session_id,
@@ -156,6 +166,7 @@ async def _convert_unallocated_machine(
         project=unallocated_machine.project,
         ssh_user=username,
         host_ip=unallocated_machine.host_ip,
+        ssh_key=unallocated_machine.ssh_key
     )
     logger.info(
         f"Successfully converted unallocated machine {unallocated_machine.instance_name}"
@@ -167,7 +178,7 @@ async def _convert_unallocated_machine(
 
 
 async def create_session(
-    session_id: str, public_key: str, idempotency_key: str
+    session_id: str, public_key: Optional[str], idempotency_key: str
 ) -> ActiveSession:
     # First check for unallocated machines
     active_session: Optional[ActiveSession] = await _convert_unallocated_machine(
@@ -182,6 +193,7 @@ async def create_session(
         name=f"a-{instance_uuid}",
         project=CFG.configs["project_name"],
         zone=CFG.zone,
+        ssh_key=gen_ssh_key()
     )
     instance.ssh_public_key = public_key
 
@@ -213,6 +225,7 @@ async def create_session(
         project=instance.project,
         ssh_user=ssh_user,
         host_ip=host_ip,
+        ssh_key=instance.ssh_key
     )
 
     get_active_session_ref().document(session_id).set(
@@ -244,9 +257,22 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
         ],
     }
 
-    username = None
-    if instance.ssh_public_key:
-        username = "sudopod"  # TODO probably pass this in later on?
+    username = "sudopod"  # TODO probably pass this in later on?
+
+    if instance.ssh_key:
+        ssh_keys = [
+            (username, instance.ssh_public_key), #DEPRECATED
+            (username, instance.ssh_key.public_key)
+        ]
+        ssh_keys_value = "\n".join(f"{username}:{key}" for username, key in ssh_keys)
+        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
+        instance_config["metadata"] = {
+            "items": [
+                {"key": "ssh-keys", "value": ssh_keys_value},
+                {"key": "startup-script", "value": startup_script},
+            ]
+        }
+    elif instance.ssh_public_key:
         startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
         instance_config["metadata"] = {
             "items": [
@@ -292,7 +318,7 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
                     raise Exception("Instance failed to start up properly")
 
         elif time.time() - start_time > timeout:
-            logger.error(f"Starting instance {instance.instance}")
+            logger.error(f"Starting instance {instance}")
             # TODO shutdown instance if this occurs
             raise Exception("Operation timed out")
         else:
@@ -337,6 +363,7 @@ async def reset_instance(session_id):
         project=active_session.project,
         zone=active_session.zone,
         ssh_public_key=active_session.public_key,
+        ssh_key=active_session.ssh_key
     )
 
     host_ip, ssh_user = await _reset_instance(instance)
@@ -351,6 +378,7 @@ async def reset_instance(session_id):
         instance_name=instance.name,
         ssh_user=ssh_user,
         host_ip=host_ip,
+        ssh_key=instance.ssh_key
     )
 
     get_active_session_ref().document(session_id).set(

@@ -6,6 +6,7 @@ from typing import List
 from config import Config
 from dacite import from_dict
 from datatypes import RunningMachine, UnallocatedMachine
+from ssh.ssh_keys import gen_ssh_key
 from utils.deploy import Instance, create_instance, delete_instance
 from utils.firebase import get_running_machine_ref, get_unallocated_machine_ref
 
@@ -62,14 +63,18 @@ def _num_vms_needed():
 
 async def setup_vms():
     for i in range(_num_vms_needed()):
+        #TODO: setup jupyter access tokens
+        ssh_key = gen_ssh_key()
+        
         instance: Instance = Instance(
             name=f"a-{uuid.uuid4()}",
             project=CFG.configs["project_name"],
             zone=CFG.zone,
+            ssh_key=ssh_key
         )
 
         external_ip, username = await create_instance(
-            instance, machine_type="n1-standard-1"
+            instance, machine_type="n1-standard-1", 
         )
 
         unallocated_machine: UnallocatedMachine = UnallocatedMachine(
@@ -80,6 +85,7 @@ async def setup_vms():
             instance_name=instance.name,
             machine_type="n1-standard-1",
             host_ip=external_ip,
+            ssh_key=ssh_key
         )
         get_unallocated_machine_ref().document(unallocated_machine.id).set(
             dataclasses.asdict(unallocated_machine)

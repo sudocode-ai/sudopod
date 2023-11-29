@@ -15,39 +15,41 @@ deploy_http_router = APIRouter()
 
 class ConnectMachineRequest(BaseModel):
     session_id: str
-    public_key: str
     super_secret: str
     idempotency_key: str
+    public_key: Optional[str] = None
 
 
 @deploy_http_router.post("/session", status_code=200)
 async def connect_machine(req: ConnectMachineRequest):
     if req.super_secret != "Arlington doodads popguns":
         raise HTTPException(status_code=403, detail="Unauthorized")
-    maybe_session: Optional[ActiveSession] = retrieve_session(
+    session: Optional[ActiveSession] = retrieve_session(
         req.session_id, req.idempotency_key
     )
-    if not maybe_session:
-        maybe_session: ActiveSession = await create_session(
+    if not session:
+        session = await create_session(
             req.session_id, req.public_key, req.idempotency_key
         )
     response = {
         "status": "success",
-        "host": maybe_session.host_ip,
-        "ssh_user": maybe_session.ssh_user,
+        "host": session.host_ip,
+        "ssh_user": session.ssh_user,
     }
+    if session.ssh_key:
+        response["ssh_private_key"] = session.ssh_key.private_key
     return response
 
 
 @deploy_http_router.post("/session/{session_id}/reset", status_code=200)
-async def connect_machine(
+async def reset_machine(
     session_id: str,
 ):
-    active_session: ActiveSession = await reset_instance(session_id)
+    session: ActiveSession = await reset_instance(session_id)
     response = {
         "status": "success",
-        "host": active_session.host_ip,
-        "ssh_user": active_session.ssh_user,
+        "host": session.host_ip,
+        "ssh_user": session.ssh_user,
     }
     return response
 
