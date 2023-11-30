@@ -5,6 +5,7 @@ from typing import List
 import secrets
 
 from config import Config
+from constants import JUPYTER_PORT
 from dacite import from_dict
 from datatypes import RunningMachine, UnallocatedMachine
 from ssh.ssh_keys import gen_ssh_key
@@ -67,6 +68,7 @@ async def setup_vms():
             zone=CFG.zone,
             ssh_key=ssh_key,
             jupyter_access_token=secrets.token_hex(32),
+            jupyter_port=JUPYTER_PORT,
         )
 
         external_ip, username = await create_instance(
@@ -83,6 +85,7 @@ async def setup_vms():
             host_ip=external_ip,
             ssh_key=ssh_key,
             jupyter_access_token=instance.jupyter_access_token,
+            jupyter_port=instance.jupyter_port
         )
         get_unallocated_machine_ref().document(unallocated_machine.id).set(
             dataclasses.asdict(unallocated_machine)

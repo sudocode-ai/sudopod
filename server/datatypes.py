@@ -33,6 +33,7 @@ class ActiveSession:
     ssh_user: str
     ssh_key: SshKey
     jupyter_access_token: Optional[str] = None
+    jupyter_port: Optional[int] = None
 
 
 @dataclass
@@ -47,3 +48,4 @@ class UnallocatedMachine:
     host_ip: str
     ssh_key: SshKey
     jupyter_access_token: Optional[str] = None
+    jupyter_port: Optional[int] = None

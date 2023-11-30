@@ -7,6 +7,7 @@ from typing import Optional
 import secrets
 
 from config import Config
+from constants import JUPYTER_PORT
 from dacite import from_dict
 from datatypes import ActiveSession, RunningMachine, SshKey, UnallocatedMachine
 from google.api_core import exceptions
@@ -31,6 +32,7 @@ class Instance(BaseModel):
     zone: str
     ssh_key: SshKey
     jupyter_access_token: str
+    jupyter_port: int
 
 
 def clean_string_for_gcp_instance(string):
@@ -158,6 +160,7 @@ async def create_session(
         zone=CFG.zone,
         ssh_key=gen_ssh_key(),
         jupyter_access_token=secrets.token_hex(32),
+        jupyter_port=JUPYTER_PORT,
     )
 
     # Create a running machine first. That way, we can track the lifecycle of this machine for killing it.
@@ -189,6 +192,7 @@ async def create_session(
         host_ip=host_ip,
         ssh_key=instance.ssh_key,
         jupyter_access_token=instance.jupyter_access_token,
+        jupyter_port=instance.jupyter_port,
     )
 
     get_active_session_ref().document(session_id).set(
@@ -273,7 +277,12 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
             # Wait for a few seconds before polling again
             await asyncio.sleep(3)
             
-    await run_post_startup_script(username=username, host=external_ip, private_key=instance.ssh_key.private_key, jupyter_access_token=instance.jupyter_access_token)
+    await run_post_startup_script(
+        username=username, 
+        host=external_ip, 
+        private_key=instance.ssh_key.private_key, 
+        jupyter_access_token=instance.jupyter_access_token,
+        jupyter_port=instance.jupyter_port)
     return external_ip, username
 
 
@@ -314,7 +323,8 @@ async def reset_instance(session_id):
         project=active_session.project,
         zone=active_session.zone,
         ssh_key=active_session.ssh_key,
-        jupyter_access_token=secrets.token_hex(32),
+        jupyter_access_token=active_session.jupyter_access_token,
+        jupyter_port=active_session.jupyter_port,
     )
 
     host_ip, ssh_user = await _reset_instance(instance)
