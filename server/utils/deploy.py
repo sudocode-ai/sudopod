@@ -259,20 +259,8 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
 
     username = "sudopod"  # TODO probably pass this in later on?
 
-    if instance.ssh_key:
-        ssh_keys = [
-            (username, instance.ssh_public_key), #DEPRECATED
-            (username, instance.ssh_key.public_key)
-        ]
-        ssh_keys_value = "\n".join(f"{username}:{key}" for username, key in ssh_keys)
-        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
-        instance_config["metadata"] = {
-            "items": [
-                {"key": "ssh-keys", "value": ssh_keys_value},
-                {"key": "startup-script", "value": startup_script},
-            ]
-        }
-    elif instance.ssh_public_key:
+
+    if instance.ssh_public_key:
         startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
         instance_config["metadata"] = {
             "items": [
@@ -280,7 +268,15 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
                 {"key": "startup-script", "value": startup_script},
             ]
         }
-
+    elif instance.ssh_key:
+        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
+        instance_config["metadata"] = {
+            "items": [
+                {"key": "ssh-keys", "value": f"{username}:{instance.ssh_key.public_key}"},
+                {"key": "startup-script", "value": startup_script},
+            ]
+        }
+        
     operation_obj = client.insert(
         project=instance.project, zone=instance.zone, instance_resource=instance_config
     )
