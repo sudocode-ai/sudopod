@@ -2,6 +2,7 @@ import dataclasses
 import time
 import uuid
 from typing import List
+import secrets
 
 from config import Config
 from dacite import from_dict
@@ -38,13 +39,7 @@ async def cleanup_vms():
         logger.info(
             f"Deleting machine {expired_machine.session_id} and id {expired_machine_doc.id} in {CONFIGURED_PROJECT}"
         )
-
-        instance: Instance = Instance(
-            name=expired_machine.instance_name,
-            project=expired_machine.project,
-            zone=expired_machine.zone,
-        )
-        await delete_instance(instance)
+        await delete_instance(expired_machine.instance_name, expired_machine.zone, expired_machine.project)
         expired_machine_doc.reference.delete()
 
 
@@ -70,7 +65,8 @@ async def setup_vms():
             name=f"a-{uuid.uuid4()}",
             project=CFG.configs["project_name"],
             zone=CFG.zone,
-            ssh_key=ssh_key
+            ssh_key=ssh_key,
+            jupyter_access_token=secrets.token_hex(32),
         )
 
         external_ip, username = await create_instance(
@@ -85,7 +81,8 @@ async def setup_vms():
             instance_name=instance.name,
             machine_type="n1-standard-1",
             host_ip=external_ip,
-            ssh_key=ssh_key
+            ssh_key=ssh_key,
+            jupyter_access_token=instance.jupyter_access_token,
         )
         get_unallocated_machine_ref().document(unallocated_machine.id).set(
             dataclasses.asdict(unallocated_machine)

@@ -4,12 +4,12 @@ import re
 import time
 import uuid
 from typing import Optional
+import secrets
 
 from config import Config
 from dacite import from_dict
 from datatypes import ActiveSession, RunningMachine, SshKey, UnallocatedMachine
 from google.api_core import exceptions
-from google.api_core.exceptions import NotFound
 from google.cloud import compute_v1, firestore
 from pydantic import BaseModel
 from ssh.ssh_keys import gen_ssh_key
@@ -19,6 +19,7 @@ from utils.firebase import (
     get_running_machine_ref,
     get_unallocated_machine_ref,
 )
+from utils.setup import run_post_startup_script
 
 CFG = Config()
 logger = CFG.logger
@@ -28,8 +29,8 @@ class Instance(BaseModel):
     name: str
     project: str
     zone: str
-    ssh_public_key: Optional[str] = None #TODO REMOVE deprecated
-    ssh_key: Optional[SshKey] = None
+    ssh_key: SshKey
+    jupyter_access_token: str
 
 
 def clean_string_for_gcp_instance(string):
@@ -155,7 +156,8 @@ async def create_session(
         name=f"a-{instance_uuid}",
         project=CFG.configs["project_name"],
         zone=CFG.zone,
-        ssh_key=gen_ssh_key()
+        ssh_key=gen_ssh_key(),
+        jupyter_access_token=secrets.token_hex(32),
     )
 
     # Create a running machine first. That way, we can track the lifecycle of this machine for killing it.
@@ -185,7 +187,8 @@ async def create_session(
         project=instance.project,
         ssh_user=ssh_user,
         host_ip=host_ip,
-        ssh_key=instance.ssh_key
+        ssh_key=instance.ssh_key,
+        jupyter_access_token=instance.jupyter_access_token,
     )
 
     get_active_session_ref().document(session_id).set(
@@ -255,8 +258,7 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
                     external_ip = (
                         instance_info.network_interfaces[0].access_configs[0].nat_i_p
                     )
-                    # Return the SSH URL
-                    return external_ip, username
+                    break
                 else:
                     logger.error(
                         f"Instance failed to start up successfully: {instance_info}"
@@ -270,16 +272,19 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
         else:
             # Wait for a few seconds before polling again
             await asyncio.sleep(3)
+            
+    await run_post_startup_script(username=username, host=external_ip, private_key=instance.ssh_key.private_key, jupyter_access_token=instance.jupyter_access_token)
+    return external_ip, username
 
 
-async def delete_instance(instance: Instance, error_on_not_found=False):
+async def delete_instance(project: str, zone: str, name: str, error_on_not_found=False):
     client = compute_v1.InstancesClient()
     try:
         logger.info(
-            f"Attemting to delete instance {instance.name}"
+            f"Attemting to delete instance {name}"
         )  # Log the error message
         delete_operation = client.delete(
-            project=instance.project, zone=instance.zone, instance=instance.name
+            project=project, zone=zone, instance=name
         )
         delete_operation.result()  # Wait for the operation to complete
     except exceptions.NotFound as e:
@@ -290,7 +295,7 @@ async def delete_instance(instance: Instance, error_on_not_found=False):
 
 
 async def _reset_instance(instance: Instance):
-    await delete_instance(instance)
+    await delete_instance(instance.project, instance.zone, instance.name)
     # Recreate the instance
     host_ip, ssh_user = await create_instance(instance)
     return host_ip, ssh_user
@@ -308,8 +313,8 @@ async def reset_instance(session_id):
         name=active_session.instance_name,
         project=active_session.project,
         zone=active_session.zone,
-        ssh_public_key=active_session.public_key,
-        ssh_key=active_session.ssh_key
+        ssh_key=active_session.ssh_key,
+        jupyter_access_token=secrets.token_hex(32),
     )
 
     host_ip, ssh_user = await _reset_instance(instance)
