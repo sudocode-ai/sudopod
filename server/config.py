@@ -83,3 +83,5 @@ class Config(metaclass=Singleton):
         self.zone = "us-west1-a"
 
         self.min_unallocated_vms = 2
+
+logger = Config().logger
