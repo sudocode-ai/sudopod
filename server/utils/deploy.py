@@ -51,33 +51,6 @@ def clean_string_for_gcp_instance(string):
     return string
 
 
-async def _add_ssh_key(unallocated_machine: UnallocatedMachine, ssh_public_key: str):
-    client = compute_v1.InstancesClient()
-
-    username = "sudopod"  # TODO probably pass this in later on?
-    ssh_keys = f"{username}:{ssh_public_key}"
-
-    # Get the current metadata
-    current_metadata = client.get(
-        project=unallocated_machine.project,
-        zone=unallocated_machine.zone,
-        instance=unallocated_machine.instance_name,
-    ).metadata
-
-    # Add the new SSH key
-    items = current_metadata.items
-    items.append({"key": "ssh-keys", "value": ssh_keys})
-
-    # Update the instance with the new metadata
-    operation_obj = client.set_metadata(
-        project=unallocated_machine.project,
-        zone=unallocated_machine.zone,
-        instance=unallocated_machine.instance_name,
-        metadata_resource=current_metadata,
-    )
-    return username
-
-
 def retrieve_session(session_id: str, idempotency_key: str) -> Optional[ActiveSession]:
     # If session exists, just retrieve it
     active_session_doc = get_active_session_ref().document(session_id).get()
@@ -94,7 +67,7 @@ def retrieve_session(session_id: str, idempotency_key: str) -> Optional[ActiveSe
 
 
 async def _convert_unallocated_machine(
-    session_id: str, public_key: Optional[str], idempotency_key: str
+    session_id: str, idempotency_key: str
 ) -> Optional[ActiveSession]:
     """Attempt to convert an existing unallocated machine, and turn it into a running machine. If anything fails in the process, return None (create a new machine)"""
 
@@ -141,26 +114,15 @@ async def _convert_unallocated_machine(
     if not unallocated_machine:
         return None
 
-
-    #DEPRECATED WORKFLOW
-    if public_key:
-        # Prep the machine. if this operation fails, that's okay. That means the machine will be inaccessible, meaning it'll be restarted when someone tries to use it.
-        try:
-            logger.info("adding public ssh key to user")
-            username = await _add_ssh_key(unallocated_machine, public_key)
-        except NotFound as e:
-            logger.info(f"Failed to find machine for instance {unallocated_machine}")
-            return None
-    elif unallocated_machine.ssh_key:
+    if unallocated_machine.ssh_key:
         username = unallocated_machine.ssh_key.username
     else:
-        raise Exception(f"No v1 public key or v2 ssh_key available when converting VM for session {session_id}")
+        raise Exception(f"No v2 ssh_key available when converting VM for session {session_id}")
 
     active_session = ActiveSession(
         session_id=session_id,
         idempotency_key=idempotency_key,
         created=int(time.time() * 1000),
-        public_key=public_key,
         zone=unallocated_machine.zone,
         instance_name=unallocated_machine.instance_name,
         project=unallocated_machine.project,
@@ -178,11 +140,11 @@ async def _convert_unallocated_machine(
 
 
 async def create_session(
-    session_id: str, public_key: Optional[str], idempotency_key: str
+    session_id: str, idempotency_key: str
 ) -> ActiveSession:
     # First check for unallocated machines
     active_session: Optional[ActiveSession] = await _convert_unallocated_machine(
-        session_id, public_key, idempotency_key
+        session_id, idempotency_key
     )
     if active_session:
         return active_session
@@ -195,7 +157,6 @@ async def create_session(
         zone=CFG.zone,
         ssh_key=gen_ssh_key()
     )
-    instance.ssh_public_key = public_key
 
     # Create a running machine first. That way, we can track the lifecycle of this machine for killing it.
     running_machine_id = str(uuid.uuid4())
@@ -219,7 +180,6 @@ async def create_session(
         session_id=session_id,
         idempotency_key=idempotency_key,
         created=int(time.time() * 1000),
-        public_key=public_key,
         zone=instance.zone,
         instance_name=instance.name,
         project=instance.project,
@@ -259,23 +219,13 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
 
     username = "sudopod"  # TODO probably pass this in later on?
 
-
-    if instance.ssh_public_key:
-        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
-        instance_config["metadata"] = {
-            "items": [
-                {"key": "ssh-keys", "value": f"{username}:{instance.ssh_public_key}"},
-                {"key": "startup-script", "value": startup_script},
-            ]
-        }
-    elif instance.ssh_key:
-        startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
-        instance_config["metadata"] = {
-            "items": [
-                {"key": "ssh-keys", "value": f"{username}:{instance.ssh_key.public_key}"},
-                {"key": "startup-script", "value": startup_script},
-            ]
-        }
+    startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
+    instance_config["metadata"] = {
+        "items": [
+            {"key": "ssh-keys", "value": f"{username}:{instance.ssh_key.public_key}"},
+            {"key": "startup-script", "value": startup_script},
+        ]
+    }
         
     operation_obj = client.insert(
         project=instance.project, zone=instance.zone, instance_resource=instance_config
@@ -368,7 +318,6 @@ async def reset_instance(session_id):
         idempotency_key=active_session.idempotency_key,
         created=int(time.time() * 1000),
         expiry_date=int(time.time() * 1000 + (1000 * 60 * 60 * 2)),
-        public_key=instance.ssh_public_key,
         zone=instance.zone,
         project=instance.project,
         instance_name=instance.name,

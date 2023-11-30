@@ -29,7 +29,7 @@ async def connect_machine(req: ConnectMachineRequest):
     )
     if not session:
         session = await create_session(
-            req.session_id, req.public_key, req.idempotency_key
+            req.session_id, req.idempotency_key
         )
     response = {
         "status": "success",
