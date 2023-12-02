@@ -35,9 +35,10 @@ async def connect_machine(req: ConnectMachineRequest):
         "status": "success",
         "host": session.host_ip,
         "ssh_user": session.ssh_user,
+        "ssh_private_key": session.ssh_key.private_key,
+        "jupyter_access_token": session.jupyter_access_token,
+        "jupyter_port": session.jupyter_port,
     }
-    if session.ssh_key:
-        response["ssh_private_key"] = session.ssh_key.private_key
     return response
 
 

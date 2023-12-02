@@ -7,6 +7,7 @@
     "allowed_origins": ["https://sudocode-backend-staging-3f44sluh7q-uw.a.run.app"],
     "log_level": "debug",
     "project_name": "pods-staging",
-    "machine_expiry_hours": 8
+    "machine_expiry_hours": 1,
+    "min_unallocated_vms": 3
     
 }

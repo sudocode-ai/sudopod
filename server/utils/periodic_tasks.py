@@ -2,8 +2,10 @@ import dataclasses
 import time
 import uuid
 from typing import List
+import secrets
 
 from config import Config
+from constants import JUPYTER_PORT
 from dacite import from_dict
 from datatypes import RunningMachine, UnallocatedMachine
 from ssh.ssh_keys import gen_ssh_key
@@ -13,8 +15,6 @@ from utils.firebase import get_running_machine_ref, get_unallocated_machine_ref
 CFG = Config()
 logger = CFG.logger
 
-
-MACHINE_COUNTER_ID = "12345"
 CONFIGURED_PROJECT = CFG.configs["project_name"]
 
 
@@ -38,13 +38,7 @@ async def cleanup_vms():
         logger.info(
             f"Deleting machine {expired_machine.session_id} and id {expired_machine_doc.id} in {CONFIGURED_PROJECT}"
         )
-
-        instance: Instance = Instance(
-            name=expired_machine.instance_name,
-            project=expired_machine.project,
-            zone=expired_machine.zone,
-        )
-        await delete_instance(instance)
+        await delete_instance(expired_machine.instance_name, expired_machine.zone, expired_machine.project)
         expired_machine_doc.reference.delete()
 
 
@@ -70,7 +64,9 @@ async def setup_vms():
             name=f"a-{uuid.uuid4()}",
             project=CFG.configs["project_name"],
             zone=CFG.zone,
-            ssh_key=ssh_key
+            ssh_key=ssh_key,
+            jupyter_access_token=secrets.token_hex(32),
+            jupyter_port=JUPYTER_PORT,
         )
 
         external_ip, username = await create_instance(
@@ -85,7 +81,9 @@ async def setup_vms():
             instance_name=instance.name,
             machine_type="n1-standard-1",
             host_ip=external_ip,
-            ssh_key=ssh_key
+            ssh_key=ssh_key,
+            jupyter_access_token=instance.jupyter_access_token,
+            jupyter_port=instance.jupyter_port
         )
         get_unallocated_machine_ref().document(unallocated_machine.id).set(
             dataclasses.asdict(unallocated_machine)

@@ -31,10 +31,9 @@ class ActiveSession:
     project: str
     host_ip: str
     ssh_user: str
-    expiry_date: Optional[int] = 0  # DEPRECATED
-    public_key: Optional[str] = None # DEPRECATED
-    ssh_key: Optional[SshKey] = None
-    jupyter_access_token: Optional[str] = None
+    ssh_key: SshKey
+    jupyter_access_token: str
+    jupyter_port: int
 
 
 @dataclass
@@ -47,5 +46,6 @@ class UnallocatedMachine:
     zone: str
     machine_type: str
     host_ip: str
-    ssh_key: Optional[SshKey] = None
-    jupyter_access_token: Optional[str] = None
+    ssh_key: SshKey
+    jupyter_access_token: str
+    jupyter_port: int
