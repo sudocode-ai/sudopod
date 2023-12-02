@@ -13,6 +13,7 @@ from datatypes import ActiveSession, RunningMachine, SshKey, UnallocatedMachine
 from google.api_core import exceptions
 from google.cloud import compute_v1, firestore
 from pydantic import BaseModel
+from scripts.startup_scripts import STARTUP_SCRIPT
 from ssh.ssh_keys import gen_ssh_key
 from utils.firebase import (
     get_active_session_ref,
@@ -20,7 +21,7 @@ from utils.firebase import (
     get_running_machine_ref,
     get_unallocated_machine_ref,
 )
-from utils.setup import run_post_startup_script
+from utils.setup import run_post_startup
 
 CFG = Config()
 logger = CFG.logger
@@ -226,7 +227,7 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
 
     username = "sudopod"  # TODO probably pass this in later on?
 
-    startup_script = f"#!/bin/bash\nusermod -aG sudo {username}"
+    startup_script = STARTUP_SCRIPT.format(username=username, jupyter_access_token=instance.jupyter_access_token, jupyter_port=instance.jupyter_port)
     instance_config["metadata"] = {
         "items": [
             {"key": "ssh-keys", "value": f"{username}:{instance.ssh_key.public_key}"},
@@ -277,7 +278,7 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
             # Wait for a few seconds before polling again
             await asyncio.sleep(3)
             
-    await run_post_startup_script(
+    await run_post_startup(
         username=username, 
         host=external_ip, 
         private_key=instance.ssh_key.private_key, 
@@ -332,13 +333,14 @@ async def reset_instance(session_id):
         session_id=session_id,
         idempotency_key=active_session.idempotency_key,
         created=int(time.time() * 1000),
-        expiry_date=int(time.time() * 1000 + (1000 * 60 * 60 * 2)),
         zone=instance.zone,
         project=instance.project,
         instance_name=instance.name,
         ssh_user=ssh_user,
         host_ip=host_ip,
-        ssh_key=instance.ssh_key
+        ssh_key=instance.ssh_key,
+        jupyter_access_token=active_session.jupyter_access_token,
+        jupyter_port=active_session.jupyter_port,
     )
 
     get_active_session_ref().document(session_id).set(

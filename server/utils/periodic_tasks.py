@@ -15,8 +15,6 @@ from utils.firebase import get_running_machine_ref, get_unallocated_machine_ref
 CFG = Config()
 logger = CFG.logger
 
-
-MACHINE_COUNTER_ID = "12345"
 CONFIGURED_PROJECT = CFG.configs["project_name"]
 
 
