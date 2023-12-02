@@ -132,7 +132,9 @@ async def _convert_unallocated_machine(
         project=unallocated_machine.project,
         ssh_user=username,
         host_ip=unallocated_machine.host_ip,
-        ssh_key=unallocated_machine.ssh_key
+        ssh_key=unallocated_machine.ssh_key,
+        jupyter_access_token=unallocated_machine.jupyter_access_token,
+        jupyter_port=unallocated_machine.jupyter_port,
     )
     logger.info(
         f"Successfully converted unallocated machine {unallocated_machine.instance_name}"
