@@ -8,6 +8,6 @@
     "log_level": "debug",
     "project_name": "pods-staging",
     "machine_expiry_hours": 1,
-    "min_unallocated_vms": 0
+    "min_unallocated_vms": 1
     
 }
