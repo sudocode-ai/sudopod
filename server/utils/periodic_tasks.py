@@ -38,11 +38,15 @@ async def cleanup_vms():
         logger.info(
             f"Deleting machine {expired_machine.session_id} and id {expired_machine_doc.id} in {CONFIGURED_PROJECT}"
         )
-        await delete_instance(expired_machine.instance_name, expired_machine.zone, expired_machine.project)
+        await delete_instance(
+            project=expired_machine.project,
+            zone=expired_machine.zone,
+            name=expired_machine.instance_name, 
+        )
         expired_machine_doc.reference.delete()
 
 
-def _num_vms_needed():
+def _num_vms_needed() -> int:
     docs = (
         get_unallocated_machine_ref()
         .where("project", "==", CFG.configs["project_name"])
@@ -56,7 +60,9 @@ def _num_vms_needed():
 
 
 async def setup_vms():
-    for i in range(_num_vms_needed()):
+    vms_to_start = _num_vms_needed()
+    logger.info(f"Starting up {vms_to_start} vms")
+    for i in range(vms_to_start):
         #TODO: setup jupyter access tokens
         ssh_key = gen_ssh_key()
         

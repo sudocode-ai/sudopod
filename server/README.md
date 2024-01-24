@@ -11,6 +11,8 @@ Make sure to run. Note you need to run this command specifically, as you need to
 
 ### Step 1: Create a VM
 
+OUTDATED. You should just create a VM through sudocode.
+
 Copy this postman request:
 https://cloudy-flare-687499.postman.co/workspace/New-Team-Workspace~1db4ed57-2b59-4215-80a0-81e7b73f6d77/request/28102078-9ea3dbd4-be0b-4c99-876c-0ef164f76d8d?ctx=documentation 
 

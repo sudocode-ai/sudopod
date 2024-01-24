@@ -4,7 +4,7 @@ from config import Config
 from datatypes import ActiveSession
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from utils.deploy import create_session, reset_instance, retrieve_session
+from utils.deploy import create_session, reset_instance, retrieve_session, delete_instance
 from utils.periodic_tasks import cleanup_vms, setup_vms
 
 CFG = Config()
@@ -65,5 +65,23 @@ async def setup_teardown_vms(req: PeriodicTaskReq):
         raise HTTPException(status_code=403, detail="Unauthorized")
     await cleanup_vms()
     await setup_vms()
+    response = {"status": "success"}
+    return response
+
+
+
+class DeleteVmReq(BaseModel):
+    super_secret: str
+    project: str
+    zone: str
+    name: str
+    
+@deploy_http_router.post("/delete_vm", status_code=200)
+async def delete_vm(
+    req: DeleteVmReq
+):
+    if req.super_secret != "Arlington doodads popguns":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    await delete_instance(req.project, req.zone, req.name)
     response = {"status": "success"}
     return response

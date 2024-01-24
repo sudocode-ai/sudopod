@@ -64,3 +64,7 @@ fi
 
 sudo docker pull us-west1-docker.pkg.dev/pods-staging/docker-images/sudopod-jupyter:latest
 """
+
+SETUP_GIT = """
+sudo npm install git
+"""
