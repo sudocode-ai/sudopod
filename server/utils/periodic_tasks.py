@@ -76,7 +76,7 @@ async def setup_vms():
         )
 
         external_ip, username = await create_instance(
-            instance, machine_type="n1-standard-1", 
+            instance, machine_type="n2-standard-2", 
         )
 
         unallocated_machine: UnallocatedMachine = UnallocatedMachine(
