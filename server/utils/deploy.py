@@ -204,7 +204,7 @@ async def create_session(
     return active_session
 
 
-async def create_instance(instance: Instance, machine_type: str = "n1-standard-1"):
+async def create_instance(instance: Instance, machine_type: str = "n1-standard-1", disk_size_gb: int = 32):
     client = compute_v1.InstancesClient()
     from utils.images import JUPYTER_IMAGE_V1
 
@@ -222,7 +222,10 @@ async def create_instance(instance: Instance, machine_type: str = "n1-standard-1
             {
                 "boot": True,
                 "auto_delete": True,
-                "initialize_params": {"source_image": JUPYTER_IMAGE_V1},
+                "initialize_params": {
+                    "source_image": JUPYTER_IMAGE_V1,
+                    "disk_size_gb": disk_size_gb,
+                },
             }
         ],
     }
