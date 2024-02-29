@@ -26,6 +26,7 @@ from utils.setup import run_post_startup
 CFG = Config()
 logger = CFG.logger
 
+DEFAULT_PYTHON_SESSION = "DEFAULT_PYTHON"
 
 class Instance(BaseModel):
     name: str
@@ -232,7 +233,12 @@ async def create_instance(instance: Instance, machine_type: str = "n2-standard-2
 
     username = "sudopod"  # TODO probably pass this in later on?
 
-    startup_script = STARTUP_SCRIPT.format(username=username, jupyter_access_token=instance.jupyter_access_token, jupyter_port=instance.jupyter_port)
+    startup_script = STARTUP_SCRIPT.format(
+        username=username, 
+        jupyter_access_token=instance.jupyter_access_token, 
+        jupyter_port=instance.jupyter_port
+        default_python_session=DEFAULT_PYTHON_SESSION
+    )
     instance_config["metadata"] = {
         "items": [
             {"key": "ssh-keys", "value": f"{username}:{instance.ssh_key.public_key}"},
