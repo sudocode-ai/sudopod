@@ -127,6 +127,8 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 						"socket_status":         nodeItem.Client.connection.GetState().String(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
 						"failed_to_start_count": nodeItem.createFails.Load(),
+						"draining":              nodeItem.draining.Load(),
+						"pending_drain":         nodeItem.pendingDrain.Load(),
 					})
 				}
 			}
