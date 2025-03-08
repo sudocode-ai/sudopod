@@ -1,0 +1,6 @@
+.env.*
+.env.prod
+.env.dev
+.env.local
+.env.test
+.env.test.local
