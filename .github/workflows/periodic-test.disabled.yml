@@ -1,17 +1,16 @@
-name: Periodic Tests (DISABLED)
+name: Periodic Tests
 
 on:
-  # Workflow disabled - uncomment triggers below to re-enable
-  # schedule:
-  #   - cron: '*/10 * * * *'
-  # workflow_dispatch:
-  # push:
-  #   branches:
-  #       - main
-  #   # only run on changes to periodic-test dir 
-  #   paths:
-  #     - 'tests/periodic-test/**'
-  #     - '.github/workflows/periodic-test.yml'
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+        - main
+    # only run on changes to periodic-test dir 
+    paths:
+      - 'tests/periodic-test/**'
+      - '.github/workflows/periodic-test.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,8 +22,6 @@ jobs:
   changes:
     name: Check
     runs-on: ubuntu-22.04
-    # Add a condition to prevent this job from running even if triggered manually
-    if: false
     strategy:
       matrix:
         e2b-domain: # each domain is a different cluster 
