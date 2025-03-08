@@ -3,7 +3,7 @@
 
 provider "registry.terraform.io/cloudflare/cloudflare" {
   version     = "4.19.0"
-  constraints = "~> 4.0"
+  constraints = "4.19.0"
   hashes = [
     "h1:3EZM8zAObdA81PcyXyiic4y2aZsTowYKG29RjZKXbJU=",
     "zh:1d5315dcbd8187a3a978dc1fb08e80b6cdd353de10afe531b3d1ecb834d0dbae",
@@ -104,7 +104,8 @@ provider "registry.terraform.io/hashicorp/nomad" {
 }
 
 provider "registry.terraform.io/hashicorp/random" {
-  version = "3.5.1"
+  version     = "3.5.1"
+  constraints = ">= 2.1.0, 3.5.1"
   hashes = [
     "h1:IL9mSatmwov+e0+++YX2V6uel+dV6bn+fC/cnGDK3Ck=",
     "zh:04e3fbd610cb52c1017d282531364b9c53ef72b6bc533acb2a90671957324a64",

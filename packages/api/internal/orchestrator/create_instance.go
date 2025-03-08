@@ -259,8 +259,44 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 			return nil, childCtx.Err()
 		case <-ticker.C:
 			// If no node is available, wait for a bit and try again
-			leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
-			if err == nil {
+
+			for _, node := range o.nodes.Items() {
+				// The node might be nil if it was removed from the list while iterating
+				if node == nil {
+					continue
+				}
+
+				// If the node is not ready, skip it
+				if node.Status() != api.NodeStatusReady {
+					continue
+				}
+
+				// Skip nodes that are draining or pending drain
+				if node.draining.Load() || node.pendingDrain.Load() {
+					continue
+				}
+
+				// Skip already tried nodes
+				if nodesExcluded[node.Info.ID] != nil {
+					continue
+				}
+
+				// To prevent overloading the node
+				if node.sbxsInProgress.Count() > maxStartingInstancesPerNode {
+					continue
+				}
+
+				cpuUsage := int64(0)
+				for _, sbx := range node.sbxsInProgress.Items() {
+					cpuUsage += sbx.CPUs
+				}
+
+				if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
+					leastBusyNode = node
+				}
+			}
+
+			if leastBusyNode != nil {
 				return leastBusyNode, nil
 			}
 		}

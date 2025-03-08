@@ -36,6 +36,10 @@ type Node struct {
 	status   api.NodeStatus
 	statusMu sync.RWMutex
 
+	draining     atomic.Bool
+	pendingDrain atomic.Bool
+	drainModeMu  sync.RWMutex
+
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
 	buildCache *ttlcache.Cache[string, interface{}]
