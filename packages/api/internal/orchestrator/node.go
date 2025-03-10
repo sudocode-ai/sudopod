@@ -3,11 +3,12 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/connectivity"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"google.golang.org/grpc/connectivity"
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
@@ -33,6 +34,10 @@ type Node struct {
 
 	status   api.NodeStatus
 	statusMu sync.RWMutex
+
+	draining     atomic.Bool
+	pendingDrain atomic.Bool
+	drainModeMu  sync.RWMutex
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 

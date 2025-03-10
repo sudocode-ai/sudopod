@@ -240,6 +240,11 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 					continue
 				}
 
+				// Skip nodes that are draining or pending drain
+				if node.draining.Load() || node.pendingDrain.Load() {
+					continue
+				}
+
 				// Skip already tried nodes
 				if nodesExcluded[node.Info.ID] != nil {
 					continue
