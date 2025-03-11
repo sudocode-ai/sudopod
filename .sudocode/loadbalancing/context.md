@@ -44,21 +44,23 @@ ok      github.com/e2b-dev/infra/packages/api/internal/orchestrator     0.357s
 2. Focusing tests on behavior (node selection) rather than implementation details
 3. Maintaining thread safety through atomic fields
 4. Following existing codebase patterns for field access
+5. Using E2B's admin API for node drain control instead of Nomad's event stream
 
 ## Work In Progress
-- Phase 1.2: Implementing Nomad drain detection
+- Phase 1.2: Implementing node drain control using E2B admin API
 - Phase 1.3: Implementing instance removal process
 - Phase 2: Automated scaling monitor
 
 ## Work TODO
 1. Phase 1.2:
-   - Implement event-driven system using Nomad's event stream API
-   - Parse node update events for drain mode detection
-   - Update Node struct when drain events are detected
+   - Implement `DrainNode` method using admin API
+   - Add monitoring for node allocation status
+   - Add timeout handling for drain operations
+   - Add logging for drain operations
 
 2. Phase 1.3:
    - Implement handler for waiting on in-progress workloads
-   - Add verification of node drain status in Nomad
+   - Add verification of node drain status
    - Implement GCP instance group removal
    - Add logging for removal process
 

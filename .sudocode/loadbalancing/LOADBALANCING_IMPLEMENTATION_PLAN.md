@@ -5,7 +5,7 @@
 This plan outlines a practical approach to implement controlled scaling for E2B worker nodes by:
 
 1. Keeping the GCP autoscaler in "ONLY_SCALE_OUT" mode for scaling up
-2. Implementing E2B/Nomad-controlled scaling down with proper node draining
+2. Using E2B's admin API for controlled node draining
 3. Using GCP's instance group management APIs to remove specific instances
 4. Leveraging existing infrastructure as much as possible
 
@@ -18,57 +18,50 @@ Based on the codebase analysis, E2B currently has:
 3. **Fixed Minimum Nodes**: A static `client_cluster_size` parameter defines the minimum number of worker nodes
 4. **Maximum Node Cap**: A `client_cluster_auto_scaling_max` parameter defines the maximum additional nodes
 5. **No Scale-In Mechanism**: No existing functionality to scale down nodes when utilization is low
+6. **Admin API**: Existing API endpoint to control node status, including setting nodes to 'draining' state
+7. **Node Drain Support**: ✅ Implemented drain flags in Node struct and updated node selection logic
 
 ## Implementation Approach
 
 We'll implement a solution where:
 - GCP autoscaler handles scaling out when utilization is high (already configured with "ONLY_SCALE_OUT" mode)
 - E2B orchestrator handles scaling in when utilization is low
-- Nomad handles draining nodes before they're removed
+- E2B admin API handles node draining
 - GCP instance group APIs are used to remove specific instances
 
-## Phase 1: Nomad-Triggered Node Removal
+## Phase 1: Node Draining and Removal
 
-### 1.1 Add Drain Mode Support to Node Struct
-
-**Implementation:**
-- Add `DrainMode` and `PendingDrain` boolean fields to the Node struct
-- Initialize these fields to `false` when creating new nodes
-- Update the node selection logic to exclude nodes with these flags set
-
-**Testing Approach:**
-- Unit test the Node struct to verify drain flags are properly initialized and can be modified
-- Test the node selection logic to ensure nodes with drain flags set are excluded
-- Leverage the existing `getLeastBusyNode` function to verify the updated selection behavior
-
-### 1.2 Implement Nomad Drain Detection
+### 1.1 Implement Node Drain Control
 
 **Implementation:**
-Implement an event-driven system using Nomad's official event stream API to detect when nodes are drained:
+Use E2B's existing admin API to control node draining:
 
-- Subscribe to Nomad's event stream API for node updates
-- Parse node update events to detect when drain mode is enabled
-- When a drain event is detected, update the corresponding Node struct and initiate the instance removal process
+- Create a new `DrainNode` method in the orchestrator that:
+  - Uses the admin API to set node status to 'draining'
+  - Updates the Node struct's drain flags
+  - Monitors the node's allocation status
+  - Returns when the node is fully drained or timeout is reached
 
 **Testing Approach:**
-- Create integration tests that verify the system correctly detects when a node is drained through the Nomad UI
-- Test the event parsing logic with mock events to ensure drain status changes are properly detected
-- Verify that the Node struct is updated correctly when a drain event is detected
+- Create unit tests for the `DrainNode` method
+- Test the interaction with the admin API using mocks
+- Verify that the Node struct is updated correctly when drain status changes
+- Test timeout handling and error conditions
 
-### 1.3 Implement Instance Removal Process
+### 1.2 Implement Instance Removal Process
 
 **Implementation:**
 Create a process that removes drained nodes from the GCP instance group:
 
 - Implement a handler that waits for in-progress workloads to complete (with timeout)
-- Verify the node is fully drained in Nomad by checking allocation status
+- Verify the node is fully drained by checking allocation status
 - Remove the instance from the GCP instance group using the deleteInstances API
 - Log the removal for auditing purposes
 
 **Testing Approach:**
 - Test the complete flow from node draining to instance removal
 - Verify that instances are properly removed from the instance group after draining
-- Use the Nomad UI's drain button for manual testing of the end-to-end flow
+- Use the admin API for manual testing of the end-to-end flow
 
 ## Phase 2: Automated Scaling Monitor
 
@@ -83,7 +76,7 @@ Implement a scaling monitor that periodically evaluates cluster utilization:
   - Calculates total and per-node resource utilization
   - Identifies empty or underutilized nodes
   - Respects the minimum node count from configuration
-  - Actively initiates the Nomad drain process for selected nodes
+  - Uses the `DrainNode` method to initiate draining
   - Marks nodes as pending drain in the Node struct
   - Leverages the instance removal process from Phase 1 after drain is complete
 
@@ -115,7 +108,6 @@ Update the orchestrator to support scaling configuration:
 Leverage existing monitoring infrastructure and extend it for scaling-specific metrics:
 
 - E2B already has basic monitoring through the `startStatusLogging` function in `orchestrator.go`
-- Nomad provides built-in monitoring for node status and allocations
 - Extend these existing systems with scaling-specific metrics
 - Set up additional alerts for scaling-related events
 
@@ -130,7 +122,7 @@ Leverage existing monitoring infrastructure and extend it for scaling-specific m
 After implementing both phases, conduct end-to-end testing to verify the complete system:
 
 1. **Manual Testing**:
-   - Manually drain a node using the Nomad UI
+   - Use the admin API to drain a node
    - Verify the system detects the drain and removes the instance
    - Create new sandboxes and verify they are not placed on draining nodes
 
@@ -146,31 +138,17 @@ After implementing both phases, conduct end-to-end testing to verify the complet
    - Verify proper error handling and recovery
 
 4. **Performance Testing**:
-   - Measure the time it takes to detect drain events
+   - Measure the time it takes to drain nodes
    - Measure the time it takes to remove instances
    - Ensure the system can handle the expected scale of operations
 
-## Leveraging Existing Infrastructure
-
-The E2B codebase already contains several components that can be leveraged for testing:
-
-1. **Mock Sandbox**: The `cmd/mock-sandbox/mock.go` can be used to simulate workloads for testing scaling.
-
-2. **Makefile Commands**: The existing `killall` and `kill-old` commands demonstrate how to interact with GCP instances.
-
-3. **Status Logging**: The `startStatusLogging` function in `orchestrator.go` provides a pattern for monitoring node status.
-
-4. **Node Selection**: The `getLeastBusyNode` function in `create_instance.go` can be extended to respect drain flags.
-
-5. **CI/CD Pipeline**: The existing GitHub Actions workflow can be extended to include tests for the new functionality.
-
 ## Key Benefits
 
-1. **Controlled Scaling**: E2B/Nomad controls the scale-in process, ensuring proper node draining
+1. **Controlled Scaling**: E2B controls the scale-in process through its own admin API
 2. **Cost Optimization**: Automatically scales down when resources are underutilized
-3. **Reliability**: Attempts to drain nodes properly but handles timeouts gracefully
+3. **Reliability**: Uses existing, proven admin API for node draining
 4. **Specificity**: Removes exactly the nodes that have been drained
 5. **Operational Tools**: Provides manual tools for operators to manage scaling
 6. **Visibility**: Adds monitoring and alerting for scaling operations
 
-This approach gives E2B complete control over which nodes are scaled down, attempts to drain them properly, and ensures we're removing the correct instances from the cluster. It also provides immediate value through the manual draining tools before the automated system is fully implemented. 
+This approach gives E2B complete control over which nodes are scaled down using its own admin API, attempts to drain them properly, and ensures we're removing the correct instances from the cluster. It also provides immediate value through the manual draining tools before the automated system is fully implemented. 

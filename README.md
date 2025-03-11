@@ -22,7 +22,7 @@ If nomad is not running, refer to the [self-hosting guide](./self-host.md) to te
 in short:
 ```
 make login-gcloud
-terraform state rm module.nomad # only needed if you've never run this before
+terraform state rm module.nomad # only needed if tf in a broken state
 make destroy
 ```
 
@@ -34,7 +34,11 @@ make login-gcloud
 make init
 make build-and-upload
 make copy-public-builds # only needed if you've never run this before
-make plan-without-jobs
+# At this point, you'll need to go into the appropriate project (the base one is [https://console.cloud.google.com/security/secret-manager?project=sudopod-e2b](here)) and update the
+# sp-cloudflare-api-token - https://dash.cloudflare.com/c263239ac45666b04215d7fb2a03667d/api-tokens Create a new "Edit zone DNS" token pointing to the appropriate domain and upload to GCS
+# sp-postgres-connection-string - if this isn't set, get the connection string (you'll need to get the password from 1password, and the connection string from supabase)
+
+make plan-without-jobs # Once above is done, this should work
 make apply
 make plan
 make apply
