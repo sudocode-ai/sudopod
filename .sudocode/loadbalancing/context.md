@@ -6,67 +6,69 @@ Refer to global context in [context.md](../context.md)
 
 ## Load Balancing
 
-Phase 1.1 of controlled node scaling has been implemented:
+We are implementing controlled node scaling for E2B, focusing on leveraging existing monitoring infrastructure to make scaling decisions.
+
+### Current State
+- GCP autoscaler is configured in "ONLY_SCALE_OUT" mode with 60% CPU utilization target
+- Comprehensive monitoring is in place:
+  - Node CPU and memory usage tracking
+  - Sandbox allocation tracking
+  - Regular status logging
+  - OpenTelemetry metrics collection
+- Node drain API endpoint exists and is functional
+- Node selection properly handles drain state
 
 ### Completed Work
-- Added drain mode support to Node struct with atomic fields:
-  ```go
-  type Node struct {
-      // ... existing fields ...
-      draining     atomic.Bool
-      pendingDrain atomic.Bool
-  }
-  ```
-- Updated node selection logic in `getLeastBusyNode` to exclude draining/pending drain nodes
-- Added test coverage for node selection behavior
-- Removed unnecessary getter/setter methods in favor of direct atomic operations
-- Updated status logging to include drain state information
+- Verified existing monitoring capabilities
+- Confirmed node selection properly handles drain state
+- Identified GCP instance group APIs needed for node removal
 
-### Modified Files
-- `packages/api/internal/orchestrator/node.go`: Added drain mode fields
-- `packages/api/internal/orchestrator/create_instance.go`: Updated node selection logic
-- `packages/api/internal/orchestrator/create_instance_test.go`: Added test coverage
-- `packages/api/internal/orchestrator/orchestrator.go`: Updated status logging
+### Next Steps
+1. Instance Group Removal
+   - Design tests for GCP instance mapping
+   - Implement instance removal logic
+   - Add error handling and logging
 
-### Test Results
-```
-=== RUN   TestGetLeastBusyNode
-=== RUN   TestGetLeastBusyNode/Should_select_least_busy_node
-=== RUN   TestGetLeastBusyNode/Should_skip_draining_nodes
-=== RUN   TestGetLeastBusyNode/Should_skip_pending_drain_nodes
---- PASS: TestGetLeastBusyNode (0.03s)
-PASS
-ok      github.com/e2b-dev/infra/packages/api/internal/orchestrator     0.357s
-```
+2. Automated Node Scaling
+   - Design tests for scaling decisions
+   - Implement scaling logic using existing metrics
+   - Add safety mechanisms
 
 ### Design Decisions
-1. Using atomic operations directly instead of getter/setter methods
-2. Focusing tests on behavior (node selection) rather than implementation details
-3. Maintaining thread safety through atomic fields
-4. Following existing codebase patterns for field access
-5. Using E2B's admin API for node drain control instead of Nomad's event stream
+1. Leverage existing monitoring infrastructure
+2. Use existing drain API endpoint
+3. Test-driven development approach
+4. Use IP address for node-to-instance mapping
+
+### Required Features
+1. Instance Group Management
+   - Map nodes to GCP instances
+   - Safe instance removal
+   - Error handling
+
+2. Automated Scaling
+   - Use existing metrics for scaling decisions
+   - Safe drain automation
+   - Minimum node count enforcement
+
+### Future Work
+- Fine-tuning of scaling thresholds
+- Enhanced monitoring alerts
+- Configuration for scaling parameters
 
 ## Work In Progress
-- Phase 1.2: Implementing node drain control using E2B admin API
-- Phase 1.3: Implementing instance removal process
-- Phase 2: Automated scaling monitor
+- Phase 1: Implementing instance group removal process
+- Phase 2: Implementing automated scaling using existing metrics
 
 ## Work TODO
-1. Phase 1.2:
-   - Implement `DrainNode` method using admin API
-   - Add monitoring for node allocation status
-   - Add timeout handling for drain operations
-   - Add logging for drain operations
-
-2. Phase 1.3:
-   - Implement handler for waiting on in-progress workloads
-   - Add verification of node drain status
+1. Phase 1:
    - Implement GCP instance group removal
    - Add logging for removal process
+   - Add error handling
 
-3. Phase 2:
-   - Create scaling monitor
-   - Implement utilization calculations
-   - Add configuration for scaling parameters
-   - Set up monitoring and alerting
+2. Phase 2:
+   - Define utilization thresholds
+   - Implement scaling decision logic
+   - Add safety mechanisms
+   - Set up alerts
 

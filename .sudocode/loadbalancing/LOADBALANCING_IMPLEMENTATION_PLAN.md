@@ -4,151 +4,103 @@
 
 This plan outlines a practical approach to implement controlled scaling for E2B worker nodes by:
 
-1. Keeping the GCP autoscaler in "ONLY_SCALE_OUT" mode for scaling up
-2. Using E2B's admin API for controlled node draining
+1. Leveraging existing monitoring and metrics collection
+2. Using E2B's existing admin API for controlled node draining
 3. Using GCP's instance group management APIs to remove specific instances
-4. Leveraging existing infrastructure as much as possible
 
 ## Current State Analysis
 
 Based on the codebase analysis, E2B currently has:
 
-1. **Basic Autoscaling**: GCP autoscaler configured to scale out (but not in) based on CPU utilization
-2. **Simple Node Selection**: Uses a "least busy node" algorithm based primarily on CPU usage
-3. **Fixed Minimum Nodes**: A static `client_cluster_size` parameter defines the minimum number of worker nodes
-4. **Maximum Node Cap**: A `client_cluster_auto_scaling_max` parameter defines the maximum additional nodes
-5. **No Scale-In Mechanism**: No existing functionality to scale down nodes when utilization is low
-6. **Admin API**: Existing API endpoint to control node status, including setting nodes to 'draining' state
-7. **Node Drain Support**: ✅ Implemented drain flags in Node struct and updated node selection logic
+1. **Monitoring Infrastructure**
+   - Node CPU and memory usage tracking
+   - Sandbox allocation tracking
+   - Regular status logging
+   - OpenTelemetry metrics collection
+
+2. **Autoscaling**
+   - GCP autoscaler configured to scale out based on 60% CPU utilization target
+   - "ONLY_SCALE_OUT" mode prevents automatic scale-in
+   - Fixed minimum nodes via `cluster_size`
+   - Maximum node cap via `cluster_auto_scaling_max`
+
+3. **Node Management**
+   - Existing drain API endpoint
+   - Node selection excludes draining nodes
+   - Status tracking implemented
 
 ## Implementation Approach
 
-We'll implement a solution where:
-- GCP autoscaler handles scaling out when utilization is high (already configured with "ONLY_SCALE_OUT" mode)
-- E2B orchestrator handles scaling in when utilization is low
-- E2B admin API handles node draining
-- GCP instance group APIs are used to remove specific instances
+### Phase 1: Node Removal Implementation
 
-## Phase 1: Node Draining and Removal
+#### Goals
+- Implement safe node removal process
+- Ensure no workload disruption
+- Clean removal from GCP instance group
 
-### 1.1 Implement Node Drain Control
+#### Implementation
 
-**Implementation:**
-Use E2B's existing admin API to control node draining:
+1. Instance Group Removal
+   - Tests should verify:
+     - Correct mapping of node to GCP instance using IP
+     - Proper instance removal when node is empty
+     - Error handling for GCP API failures
+   - Implementation needs:
+     - Map node to GCP instance using IP
+     - Remove instance using GCP API
+     - Handle errors and provide logging
 
-- Create a new `DrainNode` method in the orchestrator that:
-  - Uses the admin API to set node status to 'draining'
-  - Updates the Node struct's drain flags
-  - Monitors the node's allocation status
-  - Returns when the node is fully drained or timeout is reached
+### Phase 2: Automated Node Scaling
 
-**Testing Approach:**
-- Create unit tests for the `DrainNode` method
-- Test the interaction with the admin API using mocks
-- Verify that the Node struct is updated correctly when drain status changes
-- Test timeout handling and error conditions
+#### Goals
+- Leverage existing monitoring to identify underutilized nodes
+- Safely drain and remove nodes when possible
+- Maintain minimum node count and service capacity
 
-### 1.2 Implement Instance Removal Process
+#### Implementation
 
-**Implementation:**
-Create a process that removes drained nodes from the GCP instance group:
+1. Node Usage Monitor
+   - Tests should verify:
+     - Proper utilization threshold checks
+     - Respect for minimum node count
+     - Safe node selection for removal
+   - Implementation needs:
+     - Define utilization thresholds
+     - Implement drain decision logic
+     - Add safety mechanisms
 
-- Implement a handler that waits for in-progress workloads to complete (with timeout)
-- Verify the node is fully drained by checking allocation status
-- Remove the instance from the GCP instance group using the deleteInstances API
-- Log the removal for auditing purposes
+## Testing Strategy
 
-**Testing Approach:**
-- Test the complete flow from node draining to instance removal
-- Verify that instances are properly removed from the instance group after draining
-- Use the admin API for manual testing of the end-to-end flow
+Tests will be written before implementation for each component:
 
-## Phase 2: Automated Scaling Monitor
+1. Instance Group Tests:
+```go
+func TestInstanceRemoval(t *testing.T) {
+    // Test GCP instance identification
+    // Test instance group removal
+    // Test error handling
+}
 
-### 2.1 Create Scaling Monitor
+func TestNodeScaling(t *testing.T) {
+    // Test utilization threshold checks
+    // Test minimum node count enforcement
+    // Test node selection for removal
+}
+```
 
-**Implementation:**
-Implement a scaling monitor that periodically evaluates cluster utilization:
+## Implementation Timeline
 
-- Create a new file for scaling functionality
-- Implement a configuration struct to hold scaling parameters
-- Implement a periodic monitor that:
-  - Calculates total and per-node resource utilization
-  - Identifies empty or underutilized nodes
-  - Respects the minimum node count from configuration
-  - Uses the `DrainNode` method to initiate draining
-  - Marks nodes as pending drain in the Node struct
-  - Leverages the instance removal process from Phase 1 after drain is complete
+1. **Phase 1** (Current Focus):
+   - Implement and test instance group removal
+   - Document behavior and API usage
 
-**Testing Approach:**
-- Test the node selection logic with different utilization scenarios
-- Verify that the minimum node count is respected
-- Test with nodes at different utilization levels to ensure the correct nodes are selected for draining
-- Create integration tests that verify the complete flow from monitoring to draining
+2. **Phase 2** (Next):
+   - Implement automated scaling using existing metrics
+   - Add safety mechanisms and logging
+   - Test scaling behavior
 
-### 2.2 Update Orchestrator for Scaling Support
+## Notes
 
-**Implementation:**
-Update the orchestrator to support scaling configuration:
-
-- Add configuration fields to the Orchestrator struct for scaling parameters
-- Update initialization to accept and store these parameters
-- Start the scaling monitor with the appropriate configuration
-- Ensure the GCP autoscaler is configured with "ONLY_SCALE_OUT" mode and appropriate metrics
-
-**Testing Approach:**
-- Test the orchestrator initialization with scaling configuration
-- Verify that the configuration parameters are correctly stored
-- Test that the scaling monitor is properly started during initialization
-- Create integration tests that verify the orchestrator correctly handles scaling operations
-
-### 2.3 Add Monitoring and Alerting
-
-**Implementation:**
-Leverage existing monitoring infrastructure and extend it for scaling-specific metrics:
-
-- E2B already has basic monitoring through the `startStatusLogging` function in `orchestrator.go`
-- Extend these existing systems with scaling-specific metrics
-- Set up additional alerts for scaling-related events
-
-**Testing Approach:**
-- Test that metrics are correctly collected for scaling events
-- Verify that alerts are triggered for failed scaling operations
-- Test integration with existing monitoring systems
-- Ensure that metrics provide visibility into the scaling process
-
-## End-to-End Testing
-
-After implementing both phases, conduct end-to-end testing to verify the complete system:
-
-1. **Manual Testing**:
-   - Use the admin API to drain a node
-   - Verify the system detects the drain and removes the instance
-   - Create new sandboxes and verify they are not placed on draining nodes
-
-2. **Automated Scaling Testing**:
-   - Create a test environment with controlled load
-   - Increase load to trigger scaling out via the GCP autoscaler
-   - Decrease load to trigger scaling in via our custom implementation
-   - Verify the minimum node count is respected
-
-3. **Failure Scenario Testing**:
-   - Test what happens when node draining fails
-   - Test what happens when instance removal fails
-   - Verify proper error handling and recovery
-
-4. **Performance Testing**:
-   - Measure the time it takes to drain nodes
-   - Measure the time it takes to remove instances
-   - Ensure the system can handle the expected scale of operations
-
-## Key Benefits
-
-1. **Controlled Scaling**: E2B controls the scale-in process through its own admin API
-2. **Cost Optimization**: Automatically scales down when resources are underutilized
-3. **Reliability**: Uses existing, proven admin API for node draining
-4. **Specificity**: Removes exactly the nodes that have been drained
-5. **Operational Tools**: Provides manual tools for operators to manage scaling
-6. **Visibility**: Adds monitoring and alerting for scaling operations
-
-This approach gives E2B complete control over which nodes are scaled down using its own admin API, attempts to drain them properly, and ensures we're removing the correct instances from the cluster. It also provides immediate value through the manual draining tools before the automated system is fully implemented. 
+- Existing monitoring and metrics collection will be used for scaling decisions
+- No need to implement new monitoring systems
+- Focus on using the data we already have to make scaling decisions 
