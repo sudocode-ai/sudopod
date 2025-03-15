@@ -1,4 +1,3 @@
-
 # Enable Secrets Manager API
 resource "google_project_service" "secrets_manager_api" {
   service = "secretmanager.googleapis.com"
@@ -198,5 +197,12 @@ resource "google_artifact_registry_repository_iam_member" "orchestration_reposit
   member     = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 
   depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
+}
+
+# Add compute instance management permission
+resource "google_project_iam_member" "compute_instance_admin" {
+  project = var.gcp_project_id
+  role    = "roles/compute.instanceAdmin"
+  member  = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }
 

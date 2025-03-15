@@ -29,6 +29,7 @@ make destroy
 Now, for the self hosting steps, we don't need to follow all of them as the DB is already setup.
 We should just need to run the following:
 ```
+gcloud config set project sudopod-e2b # Run this to set yourself to the correct project
 make switch-env ENV={prod,staging,dev} # No need to rerun if env is already switched
 make login-gcloud
 make init

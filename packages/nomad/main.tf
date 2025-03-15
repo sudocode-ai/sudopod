@@ -44,6 +44,10 @@ resource "nomad_job" "api" {
     admin_token                   = var.api_admin_token
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
     dns_port_number               = var.api_dns_port_number
+    # GCP configuration for node scaling
+    gcp_project        = var.gcp_project_id
+    gcp_zone           = var.gcp_zone
+    gcp_instance_group = var.gcp_instance_group
   })
 }
 

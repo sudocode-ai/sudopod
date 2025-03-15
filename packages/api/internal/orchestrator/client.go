@@ -64,6 +64,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 		status:         api.NodeStatusReady,
 		Info:           node,
 		createFails:    atomic.Uint64{},
+		orchestrator:   o,
 	}
 
 	o.nodes.Insert(n.Info.ID, n)

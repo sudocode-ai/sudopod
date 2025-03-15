@@ -57,8 +57,9 @@ provider "google" {
 module "init" {
   source = "./packages/init"
 
-  labels = var.labels
-  prefix = var.prefix
+  labels         = var.labels
+  prefix         = var.prefix
+  gcp_project_id = var.gcp_project_id
 }
 
 module "buckets" {
@@ -163,6 +164,7 @@ module "nomad" {
   gcp_project_id      = var.gcp_project_id
   gcp_region          = var.gcp_region
   gcp_zone            = var.gcp_zone
+  gcp_instance_group  = module.cluster.client_cluster_instance_group_name
   client_machine_type = var.client_machine_type
 
   consul_acl_token_secret = module.init.consul_acl_token_secret

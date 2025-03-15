@@ -77,6 +77,10 @@ job "api" {
         DNS_PORT                      = "${dns_port_number}"
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
+        # GCP configuration for node scaling
+        GCP_PROJECT_ID               = "${gcp_project}"
+        GCP_ZONE                     = "${gcp_zone}"
+        GCP_INSTANCE_GROUP           = "${gcp_instance_group}"
       }
 
       config {

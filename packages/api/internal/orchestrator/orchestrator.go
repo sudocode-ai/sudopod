@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/scaling"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -36,6 +39,7 @@ type Orchestrator struct {
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
 	dbClient      *db.DB
+	scalingMgr    *scaling.Manager
 }
 
 func New(
@@ -63,6 +67,16 @@ func New(
 
 	slogger := logger.Sugar()
 
+	scalingMgr, err := scaling.NewManager(
+		slogger,
+		consts.GCPProject,
+		consts.GCPZone,
+		consts.GCPInstanceGroup,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create scaling manager: %w", err)
+	}
+
 	o := Orchestrator{
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
@@ -71,6 +85,7 @@ func New(
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
 		dbClient:    dbClient,
+		scalingMgr:  scalingMgr,
 	}
 
 	cache := instance.NewCache(

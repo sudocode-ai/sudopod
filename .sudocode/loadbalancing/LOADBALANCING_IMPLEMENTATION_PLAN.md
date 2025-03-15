@@ -8,99 +8,80 @@ This plan outlines a practical approach to implement controlled scaling for E2B 
 2. Using E2B's existing admin API for controlled node draining
 3. Using GCP's instance group management APIs to remove specific instances
 
-## Current State Analysis
+## Current State
 
-Based on the codebase analysis, E2B currently has:
-
-1. **Monitoring Infrastructure**
-   - Node CPU and memory usage tracking
-   - Sandbox allocation tracking
-   - Regular status logging
-   - OpenTelemetry metrics collection
-
-2. **Autoscaling**
-   - GCP autoscaler configured to scale out based on 60% CPU utilization target
-   - "ONLY_SCALE_OUT" mode prevents automatic scale-in
-   - Fixed minimum nodes via `cluster_size`
-   - Maximum node cap via `cluster_auto_scaling_max`
-
-3. **Node Management**
-   - Existing drain API endpoint
-   - Node selection excludes draining nodes
-   - Status tracking implemented
+- GCP autoscaler is configured in "ONLY_SCALE_OUT" mode with 60% CPU utilization target
+- Node drain API endpoint is implemented and functional
+- When a node is set to "draining" status, it triggers instance removal after a delay
+- Autoscaler is temporarily disabled during instance removal to prevent race conditions
 
 ## Implementation Approach
 
-### Phase 1: Node Removal Implementation
+### Phase 1: Node Removal Implementation (Completed)
+- Implemented safe node removal process triggered by drain state
+- Added delay before removal to allow workload migration
+- Added autoscaler state management during removal
+- Added comprehensive logging
+- Reuses existing drain API endpoint
 
-#### Goals
-- Implement safe node removal process
-- Ensure no workload disruption
-- Clean removal from GCP instance group
+### Phase 2: Load Allocation Optimization
+- Change sandbox allocation strategy to prefer fuller nodes
+- Implementation needs:
+  - Update `getLeastBusyNode` to prefer nodes with higher utilization
+  - Ensure sufficient resources are still available
+  - Consider both current load and in-progress sandbox creations
+  - Maintain existing safety checks
 
-#### Implementation
-
-1. Instance Group Removal
-   - Tests should verify:
-     - Correct mapping of node to GCP instance using IP
-     - Proper instance removal when node is empty
-     - Error handling for GCP API failures
-   - Implementation needs:
-     - Map node to GCP instance using IP
-     - Remove instance using GCP API
-     - Handle errors and provide logging
-
-### Phase 2: Automated Node Scaling
-
-#### Goals
-- Leverage existing monitoring to identify underutilized nodes
-- Safely drain and remove nodes when possible
-- Maintain minimum node count and service capacity
-
-#### Implementation
-
-1. Node Usage Monitor
-   - Tests should verify:
-     - Proper utilization threshold checks
-     - Respect for minimum node count
-     - Safe node selection for removal
-   - Implementation needs:
-     - Define utilization thresholds
-     - Implement drain decision logic
-     - Add safety mechanisms
+### Phase 3: Simple Node Cleanup
+- Implement periodic check for empty nodes
+- Implementation needs:
+  - Add periodic task to check for nodes with zero sandboxes
+  - If empty node found, set it to draining
+  - Rely on existing minimum node count in autoscaler to prevent over-scaling
+  - Reuse existing drain -> remove instance mechanism
 
 ## Testing Strategy
 
 Tests will be written before implementation for each component:
 
-1. Instance Group Tests:
+1. Load Allocation Tests:
 ```go
-func TestInstanceRemoval(t *testing.T) {
-    // Test GCP instance identification
-    // Test instance group removal
-    // Test error handling
+func TestNodeAllocation(t *testing.T) {
+    // Test allocation prefers fuller nodes
+    // Test resource availability checks
+    // Test safety mechanisms
 }
+```
 
-func TestNodeScaling(t *testing.T) {
-    // Test utilization threshold checks
-    // Test minimum node count enforcement
-    // Test node selection for removal
+2. Node Cleanup Tests:
+```go
+func TestNodeCleanup(t *testing.T) {
+    // Test empty node detection
+    // Test drain triggering
+    // Test minimum node count respect
 }
 ```
 
 ## Implementation Timeline
 
-1. **Phase 1** (Current Focus):
-   - Implement and test instance group removal
-   - Document behavior and API usage
+1. **Phase 1** (Completed):
+   - Implemented instance group removal
+   - Added safety mechanisms
+   - Added comprehensive logging
 
-2. **Phase 2** (Next):
-   - Implement automated scaling using existing metrics
-   - Add safety mechanisms and logging
-   - Test scaling behavior
+2. **Phase 2** (Current Focus):
+   - Implement fuller-node-first allocation
+   - Test allocation behavior
+   - Verify resource availability checks
+
+3. **Phase 3** (Next):
+   - Implement simple periodic cleanup
+   - Test cleanup behavior
+   - Verify minimum node count handling
 
 ## Notes
 
-- Existing monitoring and metrics collection will be used for scaling decisions
-- No need to implement new monitoring systems
-- Focus on using the data we already have to make scaling decisions 
+- Using existing monitoring and metrics collection for decisions
+- Leveraging existing minimum node count for scale-in control
+- Keeping implementation simple and maintainable
+- Focus on stability over complex optimization 

@@ -202,3 +202,8 @@ variable "redis_port" {
     port = number
   })
 }
+
+variable "gcp_instance_group" {
+  type        = string
+  description = "The name of the GCP instance group for node scaling"
+}

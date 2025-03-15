@@ -40,6 +40,9 @@ type Node struct {
 	buildCache *ttlcache.Cache[string, interface{}]
 
 	createFails atomic.Uint64
+
+	// Reference to the orchestrator for callbacks
+	orchestrator *Orchestrator
 }
 
 func (n *Node) Status() api.NodeStatus {
@@ -61,7 +64,13 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
-	n.status = status
+	if n.status != status {
+		n.status = status
+		// Notify scaling manager of status change
+		if n.orchestrator != nil && n.orchestrator.scalingMgr != nil {
+			n.orchestrator.scalingMgr.HandleNodeStatusChange(n.Info, status)
+		}
+	}
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
