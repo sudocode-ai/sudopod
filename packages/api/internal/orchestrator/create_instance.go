@@ -250,12 +250,24 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 					continue
 				}
 
-				cpuUsage := int64(0)
+				// Calculate total CPU and memory usage including in-progress sandboxes
+				cpuUsage := node.CPUUsage.Load()
+				memUsage := node.RamUsage.Load()
 				for _, sbx := range node.sbxsInProgress.Items() {
 					cpuUsage += sbx.CPUs
+					memUsage += sbx.MiBMemory
 				}
 
-				if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
+				// Skip nodes that are too full (over 80% utilization)
+				// This threshold can be adjusted based on monitoring and performance requirements
+				const maxUtilization = 0.80
+				if float64(cpuUsage)/float64(node.Info.TotalCPU) > maxUtilization ||
+					float64(memUsage)/float64(node.Info.TotalMemoryMiB) > maxUtilization {
+					continue
+				}
+
+				// Select the node with highest utilization that still has capacity
+				if leastBusyNode == nil || cpuUsage > leastBusyNode.CPUUsage.Load() {
 					leastBusyNode = node
 				}
 			}

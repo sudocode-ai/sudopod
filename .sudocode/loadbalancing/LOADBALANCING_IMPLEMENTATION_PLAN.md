@@ -24,15 +24,20 @@ This plan outlines a practical approach to implement controlled scaling for E2B 
 - Added comprehensive logging
 - Reuses existing drain API endpoint
 
-### Phase 2: Load Allocation Optimization
-- Change sandbox allocation strategy to prefer fuller nodes
-- Implementation needs:
-  - Update `getLeastBusyNode` to prefer nodes with higher utilization
-  - Ensure sufficient resources are still available
-  - Consider both current load and in-progress sandbox creations
-  - Maintain existing safety checks
+### Phase 2: Load Allocation Optimization (Completed)
+- Successfully implemented sandbox allocation strategy to prefer fuller nodes
+- Implementation completed:
+  - Updated `getLeastBusyNode` to prefer nodes with higher utilization
+  - Ensured sufficient resources are still available
+  - Considered both current load and in-progress sandbox creations
+  - Maintained existing safety checks
+- Validation test successful:
+  - Test with 6 jobs demonstrated correct behavior
+  - First 5 jobs allocated to single server
+  - 6th job correctly allocated to second server after drain API call
+  - Confirmed proper load balancing and drain handling
 
-### Phase 3: Simple Node Cleanup
+### Phase 3: Simple Node Cleanup (Current Focus)
 - Implement periodic check for empty nodes
 - Implementation needs:
   - Add periodic task to check for nodes with zero sandboxes
@@ -69,12 +74,13 @@ func TestNodeCleanup(t *testing.T) {
    - Added safety mechanisms
    - Added comprehensive logging
 
-2. **Phase 2** (Current Focus):
-   - Implement fuller-node-first allocation
-   - Test allocation behavior
-   - Verify resource availability checks
+2. **Phase 2** (Completed):
+   - Implemented fuller-node-first allocation
+   - Tested allocation behavior successfully
+   - Verified resource availability checks
+   - Demonstrated correct behavior in production test
 
-3. **Phase 3** (Next):
+3. **Phase 3** (Current Focus):
    - Implement simple periodic cleanup
    - Test cleanup behavior
    - Verify minimum node count handling
@@ -85,3 +91,19 @@ func TestNodeCleanup(t *testing.T) {
 - Leveraging existing minimum node count for scale-in control
 - Keeping implementation simple and maintainable
 - Focus on stability over complex optimization 
+
+
+## Future Support
+
+### Node Cycling
+
+To maintain system health and prevent long-running nodes from accumulating state or performance issues, we should implement automatic node cycling:
+
+1. **Track Node Age**:
+   - Add creation timestamp to node metadata when nodes are created
+   - Store this in the `Node` struct
+
+2. **Age-Based Node Selection**:
+   - Modify `getOptimalNode` to consider node age when selecting nodes
+   - Prefer newer nodes when utilization is similar
+   - Add weight factors for balancing age vs. utilization

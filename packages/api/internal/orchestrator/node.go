@@ -88,10 +88,30 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, er
 
 	nodes := make([]*node.NodeInfo, 0, len(nomadNodes))
 	for _, n := range nomadNodes {
+		// Get detailed node information including resources
+		nodeInfo, _, err := o.nomadClient.Nodes().Info(n.ID, options.WithContext(ctx))
+		if err != nil {
+			o.logger.Warnf("Failed to get node info for %s: %v", n.ID, err)
+			continue
+		}
+
+		// Extract CPU and memory resources
+		var totalCPU, totalMemoryMiB int64
+		if resources := nodeInfo.Resources; resources != nil {
+			if resources.CPU != nil {
+				totalCPU = int64(*resources.CPU)
+			}
+			if resources.MemoryMB != nil {
+				totalMemoryMiB = int64(*resources.MemoryMB)
+			}
+		}
+
 		nodes = append(nodes, &node.NodeInfo{
 			ID:                  n.ID[:consts.NodeIDLength],
 			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
 			IPAddress:           n.Address,
+			TotalCPU:            totalCPU,
+			TotalMemoryMiB:      totalMemoryMiB,
 		})
 	}
 
