@@ -7,3 +7,8 @@ type NodeInfo struct {
 	TotalCPU            int64 // Total available CPU cores
 	TotalMemoryMiB      int64 // Total available memory in MiB
 }
+
+// GetID returns the node ID
+func (n *NodeInfo) GetID() string {
+	return n.ID
+}

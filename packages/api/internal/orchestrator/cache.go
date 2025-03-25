@@ -119,6 +119,32 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	instanceCache.Sync(activeInstances, node.Info.ID)
 
+	// Count sandboxes on this node
+	sandboxesOnNode := 0
+	for _, sbx := range instanceCache.Items() {
+		if sbx.Instance.ClientID == node.Info.ID {
+			sandboxesOnNode++
+		}
+	}
+
+	// Update state based on edge
+	wasEmpty := node.IsEmpty()
+	isEmpty := sandboxesOnNode == 0
+
+	if isEmpty && !wasEmpty {
+		node.MarkEmpty()
+		o.logger.Infow("Node marked as empty during sync",
+			"node_id", node.Info.ID,
+		)
+	}
+	if !isEmpty && wasEmpty {
+		node.MarkActive()
+		o.logger.Infow("Node marked as active during sync",
+			"node_id", node.Info.ID,
+			"sandbox_count", sandboxesOnNode,
+		)
+	}
+
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
 		o.logger.Errorf("Error listing cached builds: %v", buildsErr)
@@ -227,6 +253,14 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logg
 			node.RamUsage.Add(info.RamMB)
 
 			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
+
+			// Mark node as active when sandbox is added
+			if node.IsEmpty() {
+				node.MarkActive()
+				logger.Infow("Node marked as active after sandbox added",
+					"node_id", node.Info.ID,
+				)
+			}
 		}
 
 		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{

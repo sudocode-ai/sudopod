@@ -44,11 +44,11 @@ Recommended for monitoring and logging
 Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
-2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required.
-3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
-4. Run `make login-gcloud` to login to `gcloud`
-5. Run `
-make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
+2. Set gcloud project to corresponding project, e.g. `gcloud config set project sudopod-e2b`
+3. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required.
+4. Run `make switch-env ENV={prod,staging,dev}` to start using your env
+5. Run `make login-gcloud` to login to `gcloud`
+6. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
    - [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
@@ -69,6 +69,7 @@ make init`. If this errors, run it a second time--it's due to a race condition o
 - Posthog API keys for monitoring (optional)
 12. Run `make plan-without-jobs` and then `make apply`
 13. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
+- NOTE. THIS REALLY DOES TAKE A WHILE. Check here (make sure to update project id) https://console.cloud.google.com/security/ccm/list/certificates?project=sudopod-e2b-5
 14. Either run 
     - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
     - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN=<your-domain> e2b template build`.

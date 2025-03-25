@@ -101,6 +101,7 @@ func New(
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
+		slogger.Info("Starting node sync")
 		go o.keepInSync(ctx, cache)
 	}
 
@@ -134,6 +135,8 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 						"socket_status":         nodeItem.Client.connection.GetState().String(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
 						"failed_to_start_count": nodeItem.createFails.Load(),
+						"is_empty":              nodeItem.IsEmpty(),
+						"empty_duration":        nodeItem.EmptyDuration().String(),
 					})
 				}
 			}

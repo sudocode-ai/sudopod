@@ -55,6 +55,36 @@ Key files modified:
    - Leverage existing minimum node count from autoscaler
    - Reuse existing instance removal mechanism
 
+### Temporarily Reverted Changes (To Be Reapplied)
+We temporarily reverted the following changes to debug an issue:
+
+1. `packages/api/internal/node/node.go`:
+   ```go
+   // GetID returns the node ID
+   func (n *NodeInfo) GetID() string {
+       return n.ID
+   }
+   ```
+
+2. `packages/api/internal/orchestrator/node.go`:
+   - Added `lastEmptyStateTime atomic.Value` field
+   - Added methods:
+     - `MarkEmpty()`: Sets empty timestamp
+     - `MarkActive()`: Clears empty timestamp
+     - `EmptyDuration()`: Returns duration of empty state
+     - `IsEmpty()`: Checks if node is empty
+     - `GetInfo()`: Returns node info interface
+
+3. `packages/api/internal/orchestrator/cache.go`:
+   - Added empty node tracking in `getDeleteInstanceFunction`
+   - Added node activation in `getInsertInstanceFunction`
+
+4. `packages/api/internal/orchestrator/orchestrator.go`:
+   - Added cleanup manager integration
+   - Added `GetCleanupNodes()` method
+
+Plan is to reapply these changes one by one, testing each step to ensure stability.
+
 ### Design Decisions
 1. Use existing monitoring infrastructure
 2. Leverage node drain API for controlled scaling
@@ -84,18 +114,61 @@ Key files modified:
 - Phase 1 (Complete): Instance group removal on drain
 - Phase 2 (Complete): Load allocation optimization
 - Phase 3 (In Progress): Simple node cleanup
+  
+### Current Testing Changes
+Currently testing minimal changes:
+1. Added log line "Starting node sync" in `orchestrator.go` to improve visibility of node sync process
+2. Added `GetID()` method to `NodeInfo` struct as foundation for node tracking
+
+### Pending Changes (To Be Added Incrementally)
+We'll add these changes back one by one after validating current changes:
+
+1. Node Empty State Tracking (`packages/api/internal/orchestrator/node.go`):
+   ```go
+   type Node struct {
+       // ... existing fields ...
+       lastEmptyStateTime atomic.Value
+   }
+   ```
+   - Methods to add:
+     - `MarkEmpty()`: Sets empty timestamp
+     - `MarkActive()`: Clears empty timestamp
+     - `EmptyDuration()`: Returns duration of empty state
+     - `IsEmpty()`: Checks if node is empty
+     - `GetInfo()`: Returns node info interface
+
+2. Cache Operation Updates (`packages/api/internal/orchestrator/cache.go`):
+   - Add empty node tracking in `getDeleteInstanceFunction`
+   - Add node activation in `getInsertInstanceFunction`
+
+3. Cleanup Manager Integration (`packages/api/internal/orchestrator/orchestrator.go`):
+   - Add `cleanupMgr *scaling.NodeCleanupManager` field
+   - Add `GetCleanupNodes()` method
+   - Initialize cleanup manager in `New()`
+
+### Testing Strategy
+1. Current Changes:
+   - Deploy and verify "Starting node sync" appears in logs
+   - Confirm `GetID()` method works with existing node operations
+   - Monitor for any unexpected behavior
+
+2. For Each Pending Change:
+   - Add one component at a time
+   - Deploy and verify logs
+   - Test specific functionality
+   - Monitor system stability
+   - Only proceed to next change after validation
 
 ## Work In Progress
-- Phase 3: Implementing periodic node cleanup
-  - Designing periodic check mechanism
-  - Planning drain state integration
-  - Preparing safety mechanisms
+- Testing minimal changes for node sync logging
+- Validating `GetID()` method integration
+- Planning incremental addition of empty state tracking
 
 ## Work TODO
-1. Phase 3:
-   - Implement periodic empty node detection
-   - Add drain state triggering logic
-   - Implement minimum node count checks
-   - Add logging and monitoring
-   - Set up alerts for cleanup events
+1. After current changes are validated:
+   - Add empty state tracking to Node struct
+   - Implement empty state management in cache operations
+   - Add cleanup manager integration
+   - Set up comprehensive logging for cleanup operations
+   - Add monitoring and alerts
 

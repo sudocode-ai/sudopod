@@ -43,6 +43,9 @@ type Node struct {
 
 	// Reference to the orchestrator for callbacks
 	orchestrator *Orchestrator
+
+	// Tracks when the node became empty
+	lastEmptyStateTime atomic.Value
 }
 
 func (n *Node) Status() api.NodeStatus {
@@ -212,4 +215,31 @@ func (t *Node) InsertBuild(buildID string) {
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
 	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 	return
+}
+
+// MarkEmpty marks the node as empty and records the timestamp
+func (n *Node) MarkEmpty() {
+	n.lastEmptyStateTime.Store(time.Now())
+}
+
+// MarkActive marks the node as active by clearing the empty timestamp
+func (n *Node) MarkActive() {
+	n.lastEmptyStateTime.Store(time.Time{})
+}
+
+// EmptyDuration returns how long the node has been empty
+// Returns 0 if the node is not empty
+func (n *Node) EmptyDuration() time.Duration {
+	if emptyTime, ok := n.lastEmptyStateTime.Load().(time.Time); ok && !emptyTime.IsZero() {
+		return time.Since(emptyTime)
+	}
+	return 0
+}
+
+// IsEmpty returns true if the node is marked as empty
+func (n *Node) IsEmpty() bool {
+	if emptyTime, ok := n.lastEmptyStateTime.Load().(time.Time); ok {
+		return !emptyTime.IsZero()
+	}
+	return false
 }
