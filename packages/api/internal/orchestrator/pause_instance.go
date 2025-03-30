@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -28,7 +29,8 @@ func (o *Orchestrator) PauseInstance(
 	tracer trace.Tracer,
 	sbx *instance.InstanceInfo,
 	teamID uuid.UUID,
-) error {
+	isCheckpoint bool,
+) (*models.EnvBuild, error) {
 	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
@@ -55,32 +57,37 @@ func (o *Orchestrator) PauseInstance(
 
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return errMsg
+		return nil, errMsg
 	}
 
 	err = snapshotInstance(ctx, o, sbx, *envBuild.EnvID, envBuild.ID.String())
 	if errors.Is(err, ErrPauseQueueExhausted{}) {
 		telemetry.ReportCriticalError(ctx, fmt.Errorf("pause queue exhausted %w", err))
 
-		return ErrPauseQueueExhausted{}
+		return nil, ErrPauseQueueExhausted{}
 	}
 
 	if err != nil && !errors.Is(err, ErrPauseQueueExhausted{}) {
 		errMsg := fmt.Errorf("error pausing sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return errMsg
+		return nil, errMsg
 	}
 
-	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
+	status := envbuild.StatusSuccess
+	if isCheckpoint {
+		status = envbuild.StatusUploaded
+	}
+
+	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, status)
 	if err != nil {
 		errMsg := fmt.Errorf("error pausing sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return errMsg
+		return nil, errMsg
 	}
 
-	return nil
+	return envBuild, nil
 }
 
 func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.InstanceInfo, templateID, buildID string) error {

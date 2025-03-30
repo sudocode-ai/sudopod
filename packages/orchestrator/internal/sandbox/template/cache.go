@@ -94,6 +94,11 @@ func (c *Cache) GetTemplate(
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
+	zap.L().Info("sudocode: getting template from cache",
+		zap.String("template_id", templateId),
+		zap.String("build_id", buildId),
+		zap.String("cache_key", storageTemplate.Files().CacheKey()))
+
 	t, found := c.cache.GetOrSet(
 		storageTemplate.Files().CacheKey(),
 		storageTemplate,

@@ -2,9 +2,12 @@ package template
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -61,7 +64,15 @@ func newTemplateFromStorage(
 	}, nil
 }
 
-func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
+func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) error {
+	// Log fetch attempt
+	zap.L().Info("sudocode: fetching template files",
+		zap.String("template_id", t.files.TemplateId),
+		zap.String("build_id", t.files.BuildId),
+		zap.String("cache_dir", t.files.CacheDir()),
+		zap.String("storage_snapfile_path", t.files.StorageSnapfilePath()),
+		zap.String("cache_snapfile_path", t.files.CacheSnapfilePath()))
+
 	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
@@ -70,16 +81,30 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		t.rootfs.SetError(errMsg)
 		t.snapfile.SetError(errMsg)
 
-		return
+		return errMsg
 	}
 
-	var wg sync.WaitGroup
+	var (
+		wg   sync.WaitGroup
+		errs []error
+		mu   sync.Mutex
+	)
+
+	// Helper to collect errors from goroutines
+	addError := func(err error) {
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
+	}
 
 	wg.Add(1)
-	go func() error {
+	go func() {
 		defer wg.Done()
 		if t.localSnapfile != nil {
-			return t.snapfile.SetValue(t.localSnapfile)
+			if err := t.snapfile.SetValue(t.localSnapfile); err != nil {
+				addError(err)
+			}
+			return
 		}
 
 		snapfile, snapfileErr := newStorageFile(
@@ -90,15 +115,20 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 		if snapfileErr != nil {
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
-
-			return t.snapfile.SetError(errMsg)
+			if err := t.snapfile.SetError(errMsg); err != nil {
+				addError(err)
+			}
+			addError(errMsg)
+			return
 		}
 
-		return t.snapfile.SetValue(snapfile)
+		if err := t.snapfile.SetValue(snapfile); err != nil {
+			addError(err)
+		}
 	}()
 
 	wg.Add(1)
-	go func() error {
+	go func() {
 		defer wg.Done()
 
 		memfileStorage, memfileErr := NewStorage(
@@ -112,15 +142,20 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
-
-			return t.memfile.SetError(errMsg)
+			if err := t.memfile.SetError(errMsg); err != nil {
+				addError(err)
+			}
+			addError(errMsg)
+			return
 		}
 
-		return t.memfile.SetValue(memfileStorage)
+		if err := t.memfile.SetValue(memfileStorage); err != nil {
+			addError(err)
+		}
 	}()
 
 	wg.Add(1)
-	go func() error {
+	go func() {
 		defer wg.Done()
 
 		rootfsStorage, rootfsErr := NewStorage(
@@ -134,14 +169,25 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 		if rootfsErr != nil {
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
-
-			return t.rootfs.SetError(errMsg)
+			if err := t.rootfs.SetError(errMsg); err != nil {
+				addError(err)
+			}
+			addError(errMsg)
+			return
 		}
 
-		return t.rootfs.SetValue(rootfsStorage)
+		if err := t.rootfs.SetValue(rootfsStorage); err != nil {
+			addError(err)
+		}
 	}()
 
 	wg.Wait()
+
+	// Return combined errors if any occurred
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (t *storageTemplate) Close() error {

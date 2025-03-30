@@ -22,6 +22,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/google/uuid"
 )
 
 const (
@@ -349,6 +350,14 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			snapshotTemplateFiles.TemplateFiles,
 		)
 
+		// Log before upload
+		sbxlogger.I(sbx).Info("sudocode: ploading snapshot files",
+			zap.String("snapfile_path", snapshotTemplateFiles.CacheSnapfilePath()),
+			zap.String("memfile_path", *memfilePath),
+			zap.String("rootfs_path", *rootfsPath),
+			zap.String("template_id", snapshotTemplateFiles.TemplateId),
+			zap.String("build_id", snapshotTemplateFiles.BuildId))
+
 		err = <-b.Upload(
 			context.Background(),
 			snapshotTemplateFiles.CacheSnapfilePath(),
@@ -363,4 +372,149 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}()
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *server) Snapshot(ctx context.Context, req *orchestrator.SandboxSnapshotRequest) (*orchestrator.SandboxSnapshotResponse, error) {
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-snapshot")
+	defer childSpan.End()
+
+	// Generate a build id for the new build
+	buildID, err := uuid.NewRandom()
+	if err != nil {
+		err = fmt.Errorf("error when generating build id: %w", err)
+		telemetry.ReportCriticalError(ctx, err)
+
+		return nil, status.New(codes.Internal, "Failed to generate build id").Err()
+	}
+
+	childSpan.SetAttributes(
+		attribute.String("sandbox.id", req.SandboxId),
+		attribute.String("client.id", s.clientID),
+		attribute.String("build.id", buildID.String()),
+	)
+
+	s.pauseMu.Lock()
+
+	sbx, ok := s.sandboxes.Get(req.SandboxId)
+	if !ok {
+		s.pauseMu.Unlock()
+
+		errMsg := fmt.Errorf("sandbox not found")
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+	}
+
+	// We don't remove the sandbox from DNS or sandboxes map
+	// We just create a snapshot of the running sandbox
+	s.pauseMu.Unlock()
+
+	snapshotTemplateFiles, err := storage.NewTemplateFiles(
+		req.SandboxId,
+		buildID.String(),
+		sbx.Config.KernelVersion,
+		sbx.Config.FirecrackerVersion,
+		sbx.Config.HugePages,
+	).NewTemplateCacheFiles()
+	if err != nil {
+		errMsg := fmt.Errorf("error creating template files: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+	}
+
+	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+	if err != nil {
+		errMsg := fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+	}
+
+	// Create a snapshot of the running sandbox
+	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, func() {})
+	if err != nil {
+		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", req.SandboxId, err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+	}
+
+	err = s.templateCache.AddSnapshot(
+		snapshotTemplateFiles.TemplateId,
+		snapshotTemplateFiles.BuildId,
+		snapshotTemplateFiles.KernelVersion,
+		snapshotTemplateFiles.FirecrackerVersion,
+		snapshotTemplateFiles.Hugepages(),
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshot.Snapfile,
+		snapshot.MemfileDiff,
+		snapshot.RootfsDiff,
+	)
+	if err != nil {
+		errMsg := fmt.Errorf("error adding snapshot to template cache: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+	}
+
+	telemetry.ReportEvent(ctx, "added snapshot to template cache")
+
+	// Upload the snapshot in a goroutine
+	go func() {
+		var memfilePath *string
+
+		switch r := snapshot.MemfileDiff.(type) {
+		case *build.NoDiff:
+			break
+		default:
+			memfileLocalPath, err := r.CachePath()
+			if err != nil {
+				sbxlogger.I(sbx).Error("error getting memfile diff path", zap.Error(err))
+
+				return
+			}
+
+			memfilePath = &memfileLocalPath
+		}
+
+		var rootfsPath *string
+
+		switch r := snapshot.RootfsDiff.(type) {
+		case *build.NoDiff:
+			break
+		default:
+			rootfsLocalPath, err := r.CachePath()
+			if err != nil {
+				sbxlogger.I(sbx).Error("error getting rootfs diff path", zap.Error(err))
+
+				return
+			}
+
+			rootfsPath = &rootfsLocalPath
+		}
+
+		b := storage.NewTemplateBuild(
+			snapshot.MemfileDiffHeader,
+			snapshot.RootfsDiffHeader,
+			snapshotTemplateFiles.TemplateFiles,
+		)
+
+		err = <-b.Upload(
+			context.Background(),
+			snapshotTemplateFiles.CacheSnapfilePath(),
+			memfilePath,
+			rootfsPath,
+		)
+		if err != nil {
+			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
+
+			return
+		}
+	}()
+
+	return &orchestrator.SandboxSnapshotResponse{
+		TemplateAlias: snapshotTemplateFiles.TemplateId,
+	}, nil
 }

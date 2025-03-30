@@ -248,3 +248,33 @@ func (c *InstanceInfo) PauseDone(err error) {
 		}
 	}
 }
+
+func (c *InstanceCache) WaitForSnapshot(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
+	instanceInfo, ok := c.pausing.Get(sandboxID)
+	if !ok {
+		return nil, ErrPausingInstanceNotFound
+	}
+
+	value, err := instanceInfo.Pausing.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot waiting was canceled: %w", err)
+	}
+
+	return value, nil
+}
+
+func (i *InstanceInfo) SnapshotDone(err error) {
+	if err == nil {
+		err := i.Pausing.SetValue(i.Node)
+		if err != nil {
+			zap.L().Error("error setting SnapshotDone value", zap.Error(err))
+			return
+		}
+	} else {
+		err := i.Pausing.SetError(err)
+		if err != nil {
+			zap.L().Error("error setting SnapshotDone error", zap.Error(err))
+			return
+		}
+	}
+}

@@ -28,6 +28,7 @@ type SandboxServiceClient interface {
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Snapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error)
 	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
 }
 
@@ -84,6 +85,15 @@ func (c *sandboxServiceClient) Pause(ctx context.Context, in *SandboxPauseReques
 	return out, nil
 }
 
+func (c *sandboxServiceClient) Snapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error) {
+	out := new(SandboxSnapshotResponse)
+	err := c.cc.Invoke(ctx, "/SandboxService/Snapshot", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error) {
 	out := new(SandboxListCachedBuildsResponse)
 	err := c.cc.Invoke(ctx, "/SandboxService/ListCachedBuilds", in, out, opts...)
@@ -102,6 +112,7 @@ type SandboxServiceServer interface {
 	List(context.Context, *emptypb.Empty) (*SandboxListResponse, error)
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
 	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
+	Snapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error)
 	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
@@ -124,6 +135,9 @@ func (UnimplementedSandboxServiceServer) Delete(context.Context, *SandboxDeleteR
 }
 func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Pause not implemented")
+}
+func (UnimplementedSandboxServiceServer) Snapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
 }
 func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListCachedBuilds not implemented")
@@ -231,6 +245,24 @@ func _SandboxService_Pause_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_Snapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).Snapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/SandboxService/Snapshot",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).Snapshot(ctx, req.(*SandboxSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -275,6 +307,10 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Pause",
 			Handler:    _SandboxService_Pause_Handler,
+		},
+		{
+			MethodName: "Snapshot",
+			Handler:    _SandboxService_Snapshot_Handler,
 		},
 		{
 			MethodName: "ListCachedBuilds",

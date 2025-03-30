@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -138,6 +139,8 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.E
 }
 
 func (db *DB) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
+	log.Printf("GetEnvWithBuild: searching for env with aliasOrEnvID: %s", aliasOrEnvID)
+
 	template, err := db.
 		Client.
 		Env.
@@ -150,26 +153,39 @@ func (db *DB) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (result 
 		).
 		WithEnvAliases(func(query *models.EnvAliasQuery) {
 			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
-		}).Only(ctx)
+		}).WithCreator().Only(ctx)
 
 	notFound := models.IsNotFound(err)
 	if notFound {
+		log.Printf("GetEnvWithBuild: template not found for aliasOrEnvID: %s, error: %v", aliasOrEnvID, err)
 		return nil, nil, TemplateNotFound{}
 	} else if err != nil {
+		log.Printf("GetEnvWithBuild: error getting template for aliasOrEnvID: %s, error: %v", aliasOrEnvID, err)
 		return nil, nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
 	}
+
+	log.Printf("GetEnvWithBuild: found template with ID: %s", template.ID)
 
 	build, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(template.ID), envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
 	notFound = models.IsNotFound(err)
 	if notFound {
+		log.Printf("GetEnvWithBuild: build not found for template ID: %s, error: %v", template.ID, err)
 		return nil, nil, fmt.Errorf("build for '%s' not found: %w", aliasOrEnvID, err)
 	} else if err != nil {
+		log.Printf("GetEnvWithBuild: error getting build for template ID: %s, error: %v", template.ID, err)
 		return nil, nil, fmt.Errorf("failed to get template build '%s': %w", aliasOrEnvID, err)
 	}
+
+	log.Printf("GetEnvWithBuild: found build with ID: %s for template ID: %s", build.ID, template.ID)
 
 	aliases := make([]string, len(template.Edges.EnvAliases))
 	for i, alias := range template.Edges.EnvAliases {
 		aliases[i] = alias.ID
+	}
+
+	var createdBy *TemplateCreator
+	if template.Edges.Creator != nil {
+		createdBy = &TemplateCreator{Id: template.Edges.Creator.ID, Email: template.Edges.Creator.Email}
 	}
 
 	return &Template{
@@ -186,6 +202,7 @@ func (db *DB) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (result 
 		LastSpawnedAt: template.LastSpawnedAt,
 		SpawnCount:    template.SpawnCount,
 		BuildCount:    template.BuildCount,
+		CreatedBy:     createdBy,
 	}, build, nil
 }
 

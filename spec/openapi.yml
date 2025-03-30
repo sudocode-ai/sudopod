@@ -978,7 +978,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  # TODO: Pause and resume might be exposed as POST /sandboxes/{sandboxID}/snapshot and then POST /sandboxes with specified snapshotting setup
   /sandboxes/{sandboxID}/pause:
     post:
       description: Pause the sandbox
@@ -992,6 +991,43 @@ paths:
       responses:
         "204":
           description: The sandbox was paused successfully and can be resumed
+        "409":
+          $ref: "#/components/responses/409"
+        "404":
+          $ref: "#/components/responses/404"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/snapshot:
+    post:
+      description: Create a checkpoint of the sandbox that can be used to spawn new sandboxes
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expiry:
+                  type: string
+                  format: date-time
+                  description: When the checkpoint should expire
+      responses:
+        "201":
+          description: Checkpoint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
         "409":
           $ref: "#/components/responses/409"
         "404":

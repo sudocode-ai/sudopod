@@ -101,11 +101,17 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
 		}
 
+		var createdBy *api.TeamUser
+		if envDB.CreatedBy != nil {
+			createdBy = &api.TeamUser{Id: envDB.CreatedBy.Id, Email: envDB.CreatedBy.Email}
+		}
+
 		templateInfo = &TemplateInfo{template: &api.Template{
 			TemplateID: envDB.TemplateID,
 			BuildID:    build.ID.String(),
 			Public:     envDB.Public,
 			Aliases:    envDB.Aliases,
+			CreatedBy:  createdBy,
 		}, teamID: teamID, build: build}
 
 		c.cache.Set(envDB.TemplateID, templateInfo, templateInfoExpiration)

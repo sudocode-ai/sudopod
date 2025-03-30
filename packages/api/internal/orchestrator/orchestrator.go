@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -36,6 +37,7 @@ type Orchestrator struct {
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
 	dbClient      *db.DB
+	sandboxClient orchestrator.SandboxServiceClient
 }
 
 func New(
@@ -171,4 +173,9 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 // WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
 func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
 	return o.instanceCache.WaitForPause(ctx, sandboxID)
+}
+
+// WaitForSnapshot waits for the instance to be snapshotted and returns the node info where the instance was snapshotted on.
+func (o *Orchestrator) WaitForSnapshot(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
+	return o.instanceCache.WaitForSnapshot(ctx, sandboxID)
 }

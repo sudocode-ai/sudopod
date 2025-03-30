@@ -82,11 +82,19 @@ message CachedBuildInfo {
   google.protobuf.Timestamp expiration_time = 2;
 }
 
+message SandboxSnapshotRequest {
+  string sandbox_id = 1;
+  google.protobuf.Timestamp expiry = 2;
+  string build_id = 3;
+}
+
+message SandboxSnapshotResponse {
+  string template_alias = 1;
+}
+
 message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
-
-
 
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
@@ -94,6 +102,7 @@ service SandboxService {
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+  rpc Snapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }

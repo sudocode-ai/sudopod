@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"go.uber.org/zap"
 	"context"
 	_ "embed"
 	"fmt"
@@ -107,6 +108,19 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	var node *Node
+
+	// Log sandbox creation details
+	zap.L().Info("sudocode: creating sandbox",
+		zap.String("sandbox_id", sandboxID),
+		zap.String("template_id", *build.EnvID),
+		zap.String("base_template_id", baseTemplateID),
+		zap.Bool("is_resume", isResume),
+		zap.String("client_id", func() string {
+			if clientID == nil {
+				return ""
+			}
+			return *clientID
+		}()))
 
 	if isResume && clientID != nil {
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")

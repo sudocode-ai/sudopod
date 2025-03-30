@@ -33,7 +33,15 @@ orchestrator:
 ```
 cd packages/orchestrator
 make init
+<<<<<<< HEAD
+<<<<<<< HEAD
 PATH=$PATH:~/go/bin make generate
+=======
+make generate
+>>>>>>> 90116fb0 (wrong approach, will fix)
+=======
+PATH=$PATH:~/go/bin make generate
+>>>>>>> fccd8bb0 (more changes, something still fundamnetally broken)
 cd -
 ```
 
@@ -42,7 +50,15 @@ envd:
 ```
 cd packages/envd
 make init-generate
+<<<<<<< HEAD
+<<<<<<< HEAD
 PATH=$PATH:~/go/bin make generate
+=======
+make generate
+>>>>>>> 90116fb0 (wrong approach, will fix)
+=======
+PATH=$PATH:~/go/bin make generate
+>>>>>>> fccd8bb0 (more changes, something still fundamnetally broken)
 cd -
 ```
 
@@ -50,14 +66,31 @@ template-manager:
 ```
 cd packages/template-manager
 make init
+<<<<<<< HEAD
+<<<<<<< HEAD
 PATH=$PATH:~/go/bin make generate
+cd -    
+=======
+make generate
+=======
+PATH=$PATH:~/go/bin make generate
+>>>>>>> fccd8bb0 (more changes, something still fundamnetally broken)
 cd -
+>>>>>>> 90116fb0 (wrong approach, will fix)
 ```
 
 api:
 ```
 cd packages/api
+<<<<<<< HEAD
+<<<<<<< HEAD
 PATH=$PATH:~/go/bin make generate
+=======
+make generate
+>>>>>>> 90116fb0 (wrong approach, will fix)
+=======
+PATH=$PATH:~/go/bin make generate
+>>>>>>> fccd8bb0 (more changes, something still fundamnetally broken)
 cd -
 ```
 
