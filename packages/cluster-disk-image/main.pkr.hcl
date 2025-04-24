@@ -136,6 +136,10 @@ build {
       "sudo mv /tmp/limits.conf /etc/security/limits.conf",
       # Increase the maximum number of connections by 4x
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
+      # Increase max map count for better memory management
+      "echo 'vm.max_map_count = 262144' | sudo tee -a /etc/sysctl.conf",
+      # Apply sysctl changes
+      "sudo sysctl -p",
     ]
   }
 }
