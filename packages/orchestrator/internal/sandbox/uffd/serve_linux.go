@@ -47,6 +47,14 @@ func Serve(
 	sandboxId string,
 	nodeID string,
 ) error {
+	// Set memlock limit for UFFD process
+	if err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{
+		Cur: 4 * 1024 * 1024 * 1024, // 4GB
+		Max: 4 * 1024 * 1024 * 1024,
+	}); err != nil {
+		zap.L().Error("Failed to set memlock limit", zap.String("sandbox_id", sandboxId), zap.Error(err))
+		return fmt.Errorf("failed to set memlock limit: %w", err)
+	}
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
