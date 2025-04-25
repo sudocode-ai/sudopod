@@ -54,6 +54,11 @@ build {
     destination = "/tmp/limits.conf"
   }
 
+  provisioner "file" {
+    source      = "${path.root}/setup/system.conf"
+    destination = "/tmp/system.conf"
+  }
+
   # Install Docker
   provisioner "shell" {
     inline = [
@@ -134,6 +139,9 @@ build {
     inline = [
       # Increase the maximum number of open files
       "sudo mv /tmp/limits.conf /etc/security/limits.conf",
+      # Set systemd memlock limits
+      "sudo mv /tmp/system.conf /etc/systemd/system.conf",
+      "sudo systemctl daemon-reexec",
       # Increase the maximum number of connections by 4x
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
       # Increase max map count for better memory management

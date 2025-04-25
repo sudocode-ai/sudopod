@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
@@ -125,6 +126,14 @@ func NewProcess(
 		"-c",
 		fcStartScript.String(),
 	)
+
+	// Set memlock limit to 4GB
+	if err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{
+		Cur: 4 * 1024 * 1024 * 1024,
+		Max: 4 * 1024 * 1024 * 1024,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to set memlock limit: %w", err)
+	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // Create a new session
