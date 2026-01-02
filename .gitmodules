@@ -1,0 +1,3 @@
+[submodule "refs/sudocode"]
+	path = refs/sudocode
+	url = git@github.com:sudocode-ai/sudocode.git
