@@ -1,3 +1,6 @@
 [submodule "refs/sudocode"]
 	path = refs/sudocode
 	url = git@github.com:sudocode-ai/sudocode.git
+[submodule "refs/coder"]
+	path = refs/coder
+	url = https://github.com/coder/coder
