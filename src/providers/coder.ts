@@ -4,6 +4,7 @@
 
 import type {
   CoderConfig,
+  CoderDeployOptions,
   DeployOptions,
   Deployment,
   DeploymentStatus,
@@ -24,12 +25,53 @@ export class CoderProvider implements Provider {
   constructor(private config: CoderConfig) {}
 
   async deploy(options: DeployOptions): Promise<Deployment> {
-    // TODO: Implement Coder workspace deployment
-    // - Create workspace using Coder API
-    // - Configure template and parameters from providerOptions
-    // - Set up keepAliveHours and idleTimeout (Coder supports both)
+    // Extract git repository information from new structure
+    const { owner, repo, branch } = options.git;
+    const repoUrl = `https://github.com/${owner}/${repo}`;
+    
+    // Extract Coder-specific options
+    const coderOptions = options.providerOptions as CoderDeployOptions;
+    const template = coderOptions.template || 'default-workspace';
+    const parameters = coderOptions.parameters || {};
+    
+    // Handle agent installation configuration
+    const agentsToInstall = options.agents?.install || [];
+    if (agentsToInstall.includes('claude')) {
+      // TODO: Configure Coder template parameter for Claude agent installation
+      parameters['install_claude_agent'] = 'true';
+    }
+    
+    // Handle LLM/model configuration
+    const envVars: Record<string, string> = {};
+    
+    if (options.models?.claudeLtt) {
+      // Pass Claude LTT as environment variable
+      envVars['CLAUDE_LTT'] = options.models.claudeLtt;
+    }
+    
+    if (options.models?.providerConfig) {
+      // Pass provider config as JSON string in environment variable
+      envVars['LLM_PROVIDER_CONFIG'] = JSON.stringify(options.models.providerConfig);
+    }
+    
+    if (options.models?.providerConfigEnvVar) {
+      // Reference to environment variable containing provider config
+      // In a real implementation, this would be configured in the Coder template
+      // to read from the specified environment variable
+      envVars['LLM_PROVIDER_CONFIG_VAR'] = options.models.providerConfigEnvVar;
+    }
+    
+    // Configure keepAliveHours and idleTimeout (both honored by Coder)
+    const keepAliveHours = options.server.keepAliveHours || 72;
+    const idleTimeout = options.server.idleTimeout;
+    
+    // TODO: Implement actual Coder workspace deployment
+    // - Create workspace using Coder API with template and parameters
+    // - Set up TTL (keepAliveHours) and idle timeout
+    // - Pass environment variables for LLM configuration
     // - Wait for workspace to start
     // - Return Deployment object with URLs and metadata
+    
     throw new Error('CoderProvider.deploy() not yet implemented');
   }
 

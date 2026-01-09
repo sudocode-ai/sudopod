@@ -17,6 +17,17 @@ export {
   ProviderError,
 } from './core/errors.js';
 
+// Export validation utilities
+export {
+  ValidationError,
+  validateDeployOptions,
+  validateGitConfig,
+  validateAgentConfig,
+  validateModelConfig,
+  validateSudocodeConfig,
+  validateServerConfig,
+} from './utils/validation.js';
+
 // Export all types
 export type {
   ProviderConfig,

@@ -30,14 +30,77 @@ export interface CoderConfig {
  * Deploy options - provider-agnostic base + provider-specific extensions
  */
 export interface DeployOptions {
-  /** Repository in owner/repo format (e.g., "username/repo") */
-  repository: string;
-
-  /** Git branch to checkout (optional, uses default branch if not specified) */
-  branch?: string;
+  /** Git repository configuration */
+  git: {
+    /** Repository owner/organization name (e.g., "anthropics") */
+    owner: string;
+    
+    /** Repository name (e.g., "sudocode") */
+    repo: string;
+    
+    /** Git branch to checkout (optional, uses default branch if not specified) */
+    branch?: string;
+  };
 
   /** Override workspace directory (optional) */
   workspaceDir?: string;
+
+  /**
+   * Agent configuration - specifies which agents to pre-install in the remote environment
+   * Currently supports: 'claude'
+   * Different agents may require different installation/setup steps
+   */
+  agents?: {
+    /** List of agent identifiers to install (currently supports: 'claude') */
+    install: string[];
+  };
+
+  /**
+   * Model/LLM configuration for the deployment
+   * Supports multiple authentication and provider configuration methods
+   */
+  models?: {
+    /**
+     * Claude Long-Term Token (LTT) for authentication with Anthropic API
+     * Used when deploying with Claude as the primary LLM
+     * @example "ltt_xxxxxxxxxxxxx"
+     */
+    claudeLtt?: string;
+
+    /**
+     * LLM provider connection details as a JSON object
+     * Supports multiple provider formats:
+     * 
+     * **Anthropic:**
+     * ```json
+     * { "provider": "anthropic", "apiKey": "sk-..." }
+     * ```
+     * 
+     * **OpenAI/LiteLLM:**
+     * ```json
+     * { "provider": "openai", "apiKey": "sk-...", "baseUrl": "https://api.openai.com/v1" }
+     * ```
+     * 
+     * **AWS Bedrock:**
+     * ```json
+     * { 
+     *   "provider": "bedrock", 
+     *   "region": "us-east-1",
+     *   "accessKeyId": "...",
+     *   "secretAccessKey": "..."
+     * }
+     * ```
+     */
+    providerConfig?: Record<string, any>;
+
+    /**
+     * Environment variable name containing the LLM provider config as JSON
+     * Alternative to providerConfig - allows passing sensitive credentials via env vars
+     * The environment variable should contain a JSON string matching the providerConfig format
+     * @example "LLM_CONFIG"
+     */
+    providerConfigEnvVar?: string;
+  };
 
   /** Sudocode installation configuration */
   sudocode: {
@@ -114,11 +177,17 @@ export interface Deployment {
   /** Provider type */
   provider: 'codespaces' | 'coder';
 
-  /** Repository in owner/repo format */
-  repository: string;
-
-  /** Git branch (if specified during deployment) */
-  branch?: string;
+  /** Git repository configuration */
+  git: {
+    /** Repository owner/organization name */
+    owner: string;
+    
+    /** Repository name */
+    repo: string;
+    
+    /** Git branch (if specified during deployment) */
+    branch?: string;
+  };
 
   /** Current deployment status */
   status: DeploymentStatus;
@@ -185,8 +254,11 @@ export interface ListFilters {
   /** Filter by status */
   status?: DeploymentStatus[];
 
-  /** Filter by repository */
-  repository?: string;
+  /** Filter by repository owner */
+  owner?: string;
+
+  /** Filter by repository name */
+  repo?: string;
 
   /** Created after timestamp (ISO 8601) */
   createdAfter?: string;
