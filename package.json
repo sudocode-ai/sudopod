@@ -1,0 +1,36 @@
+{
+  "name": "sudopod",
+  "version": "0.0.1",
+  "description": "Stateless library for deploying and managing remote development environments",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "remote",
+    "development",
+    "codespaces",
+    "coder",
+    "deployment"
+  ],
+  "author": "Sudocode AI",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

@@ -1,0 +1,37 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Tests
+tests/
+__tests__/
+*.test.ts
+*.spec.ts
+
+# Development files
+.github/
+.vscode/
+.idea/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+
+# Build artifacts
+tsconfig.json
+tsconfig.*.json
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# Misc
+.DS_Store
+coverage/
+.nyc_output/
