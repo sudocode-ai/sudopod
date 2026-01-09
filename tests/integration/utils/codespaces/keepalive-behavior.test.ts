@@ -32,6 +32,8 @@ import {
   waitForPortListening,
   startTrafficMonitor,
   isTrafficMonitorRunning,
+  getCodespaceInfo,
+  checkPortListening,
   type CodespaceInfo
 } from '../../../../src/utils/codespaces/index.js';
 import {
@@ -381,42 +383,176 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     }, 120000); // 2 minute timeout
   });
   
-  describe('Test 4: Filesystem activity keeps codespace alive (LONG)', () => {
-    it.skip('should verify filesystem activity keeps codespace alive', async () => {
-      // NOTE: This test is skipped by default because it requires a long runtime
-      // (at least 30 minutes) to wait for GitHub's idle timeout and verify the
-      // codespace stays alive.
+  describe('Test 4: Filesystem activity keeps codespace alive (MANUAL)', () => {
+    it('should verify filesystem activity prevents codespace timeout', async () => {
+      // This test validates that regular filesystem writes (heartbeat file)
+      // keep the codespace from being paused by GitHub's idle timeout.
       //
-      // To run this test:
-      // 1. Remove the .skip from this test
-      // 2. Run it separately from the other tests
-      // 3. Ensure you have time to wait for the full test duration
+      // Test strategy:
+      // 1. Create codespace with 2-minute idle timeout
+      // 2. Start daemon with 5-minute keepalive
+      // 3. Wait 3+ minutes without any SSH/network activity
+      // 4. Verify codespace is still Available (not paused/stopped)
+      // 5. Verify server still responds
       //
-      // Test approach:
-      // 1. Create a codespace with minimal idle timeout (if configurable)
-      // 2. Start traffic monitor with continuous heartbeats
-      // 3. Wait for longer than the idle timeout period
-      // 4. Verify codespace is still in "Available" state (not paused/stopped)
-      // 5. Verify server is still responding
+      // Success criteria: If codespace is still alive after 3 minutes,
+      // then file writes are keeping it alive (since idle timeout is 2 minutes)
       //
-      // Expected test duration: 30-60 minutes
-      //
-      // This test validates the core assumption that regular filesystem writes
-      // (heartbeat file) keep the codespace from being paused by GitHub.
+      // Expected test duration: ~7-8 minutes
       
-      console.log('Test 4: Verifying filesystem activity keeps codespace alive');
-      console.log('------------------------------------------------------------');
-      console.log('NOTE: This is a long-running test (~30-60 minutes)');
+      console.log('Test 4: Verifying filesystem activity prevents codespace timeout');
+      console.log('-----------------------------------------------------------------');
+      console.log('');
+      console.log('Creating a NEW codespace with 2-minute idle timeout...');
+      
+      // Create a fresh codespace with 2-minute idle timeout
+      const testCodespace = await createCodespace({
+        repository,
+        machine: 'basicLinux32gb',
+        idleTimeout: 2, // 2 minutes
+        retentionPeriod: 1
+      });
+      
+      const testCodespaceName = testCodespace.name;
+      trackCodespace(testCodespaceName);
+      console.log(`✓ Created codespace: ${testCodespaceName}`);
+      console.log('  - Idle timeout: 2 minutes');
       console.log('');
       
-      // TODO: Implement this test
-      // Key challenges:
-      // - GitHub's idle timeout is not easily configurable
-      // - Need to wait longer than the idle timeout
-      // - Need to verify codespace state (not just process state)
-      
-      throw new Error('Test not yet implemented');
-    });
+      try {
+        // Wait for ready
+        console.log('Waiting for codespace to be ready...');
+        await waitForCodespaceReady(testCodespaceName, 30);
+        console.log('✓ Codespace is ready');
+        console.log('');
+        
+        // Install sudocode (required to run server)
+        console.log('Installing sudocode in dev mode...');
+        console.log('(This will take several minutes)');
+        await installSudocodeFromLocal(testCodespaceName, workspaceDir);
+        console.log('✓ Sudocode installed');
+        console.log('');
+        
+        // Initialize project
+        console.log('Initializing sudocode project...');
+        await initializeSudocodeProject(testCodespaceName, workspaceDir);
+        console.log('✓ Project initialized');
+        console.log('');
+        
+        // Start server
+        const testPort = 3003;
+        console.log(`Starting server on port ${testPort}...`);
+        await startSudocodeServer(testCodespaceName, testPort, workspaceDir);
+        await waitForPortListening(testCodespaceName, testPort, 30);
+        console.log('✓ Server is running');
+        console.log('');
+        
+        // Start monitor with 5-minute keepalive and 1-minute heartbeat interval
+        console.log('Starting traffic monitor with 5-minute keepalive...');
+        console.log('- Keepalive: 5 minutes');
+        console.log('- Heartbeat interval: 1 minute');
+        console.log('- Codespace idle timeout: 2 minutes');
+        await startTrafficMonitor({
+          codespaceName: testCodespaceName,
+          serverPort: testPort,
+          serverLogPath: `/tmp/sudocode-${testPort}.log`,
+          keepAliveHours: 5 / 60, // 5 minutes
+          heartbeatIntervalMinutes: 1 // 1 minute
+        });
+        console.log('✓ Traffic monitor started');
+        console.log('');
+        
+        // Wait for first heartbeat to confirm daemon is working
+        console.log('Waiting for first heartbeat to confirm daemon is active...');
+        await waitForCondition(
+          async () => {
+            try {
+              const countResult = await execInCodespace(
+                testCodespaceName,
+                `wc -l < /tmp/keepalive-heartbeat-${testPort}.txt 2>/dev/null || echo "0"`,
+                { streamOutput: false }
+              );
+              const count = parseInt(countResult.trim());
+              return count > 0;
+            } catch {
+              return false;
+            }
+          },
+          90000,  // 90 second timeout
+          10000,  // Check every 10 seconds
+          'First heartbeat not written within timeout'
+        );
+        console.log('✓ First heartbeat confirmed');
+        console.log('');
+        
+        // Now wait 3 minutes WITHOUT any SSH/network activity
+        console.log('========================================');
+        console.log('CRITICAL TEST PERIOD: Waiting 3 minutes');
+        console.log('========================================');
+        console.log('');
+        console.log('No SSH commands will be run during this time.');
+        console.log('The daemon should write heartbeats every 1 minute.');
+        console.log('Codespace idle timeout is 2 minutes.');
+        console.log('If codespace is still alive after 3 minutes,');
+        console.log('then file writes are keeping it alive!');
+        console.log('');
+        console.log('Waiting...');
+        
+        // Wait exactly 3 minutes
+        const waitMinutes = 3;
+        const waitMs = waitMinutes * 60 * 1000;
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        
+        console.log(`✓ Waited ${waitMinutes} minutes`);
+        console.log('');
+        
+        // Now check if codespace is still alive
+        console.log('Checking codespace state...');
+        const info = await getCodespaceInfo(testCodespaceName);
+        
+        console.log(`Codespace state: ${info.state}`);
+        expect(info.state).toBe('Available');
+        console.log('✓ Codespace is still Available (not paused!)');
+        console.log('');
+        
+        // Verify server is still responding
+        console.log('Verifying server is still responding...');
+        const isListening = await checkPortListening(testCodespaceName, testPort);
+        expect(isListening).toBe(true);
+        console.log('✓ Server is still responding');
+        console.log('');
+        
+        // Check heartbeat file was written multiple times during the wait
+        console.log('Checking heartbeat file...');
+        const heartbeatCount = await execInCodespace(
+          testCodespaceName,
+          `wc -l < /tmp/keepalive-heartbeat-${testPort}.txt`,
+          { streamOutput: false }
+        );
+        const count = parseInt(heartbeatCount.trim());
+        
+        // Should have at least 3 heartbeats (one per minute for 3 minutes)
+        expect(count).toBeGreaterThanOrEqual(3);
+        console.log(`✓ Heartbeat file has ${count} entries (expected >= 3)`);
+        console.log('');
+        
+        console.log('========================================');
+        console.log('TEST SUCCESS!');
+        console.log('========================================');
+        console.log('');
+        console.log('The codespace remained alive for 3+ minutes despite');
+        console.log('having a 2-minute idle timeout. This proves that the');
+        console.log('daemon\'s filesystem writes (heartbeat file) are');
+        console.log('keeping the codespace alive!');
+        console.log('');
+        
+      } finally {
+        // Clean up the test codespace
+        console.log('Cleaning up test codespace...');
+        await cleanupTrackedCodespaces();
+        console.log('✓ Test codespace deleted');
+      }
+    }, 900000); // 15 minute timeout (allows for installation + 3 minute wait)
   });
   
   // Summary test that runs after all others

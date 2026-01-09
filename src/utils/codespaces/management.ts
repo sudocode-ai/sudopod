@@ -49,13 +49,18 @@ export async function createCodespace(
     options.branch ? `--branch ${options.branch}` : '',
     options.machine ? `--machine ${options.machine}` : '',
     options.idleTimeout ? `--idle-timeout ${options.idleTimeout}m` : '',
-    options.retentionPeriod ? `--retention-period ${options.retentionPeriod}d` : '',
-    '--json name,state,url,repository,branch,createdAt,machine'
+    options.retentionPeriod ? `--retention-period ${options.retentionPeriod * 24}h` : ''
   ].filter(Boolean).join(' ');
 
   try {
     const { stdout } = await execPromise(`gh ${args}`);
-    return JSON.parse(stdout) as CodespaceInfo;
+    
+    // gh codespace create outputs the codespace name
+    // Get full info using the name
+    const codespaceName = stdout.trim();
+    
+    // Now get full info with JSON output
+    return await getCodespaceInfo(codespaceName);
   } catch (error: any) {
     throw new Error(`Failed to create codespace: ${error.message}`);
   }
