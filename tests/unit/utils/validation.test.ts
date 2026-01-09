@@ -23,6 +23,8 @@ import {
   bedrockProviderConfigOptions,
   envVarProviderConfigOptions,
   combinedLlmConfigOptions,
+  devModeOptions,
+  productionModeOptions,
 } from '../../fixtures/deploy-options.js';
 
 describe('validateGitConfig', () => {
@@ -599,6 +601,22 @@ describe('validateDeployOptions', () => {
       };
       expect(() => validateDeployOptions(options)).not.toThrow();
     });
+
+    it('should accept dev mode options (dev: true with mode: local)', () => {
+      expect(() => validateDeployOptions(devModeOptions)).not.toThrow();
+    });
+
+    it('should accept production mode options (dev: false with mode: npm)', () => {
+      expect(() => validateDeployOptions(productionModeOptions)).not.toThrow();
+    });
+
+    it('should accept options without dev flag (optional)', () => {
+      const options: DeployOptions = {
+        ...minimalCodespacesOptions,
+        dev: undefined,
+      };
+      expect(() => validateDeployOptions(options)).not.toThrow();
+    });
   });
 
   describe('invalid deploy options', () => {
@@ -659,6 +677,40 @@ describe('validateDeployOptions', () => {
       const options = {
         ...minimalCodespacesOptions,
         workspaceDir: '',
+      };
+      expect(() => validateDeployOptions(options))
+        .toThrow(ValidationError);
+    });
+
+    it('should reject non-boolean dev flag', () => {
+      const options = {
+        ...minimalCodespacesOptions,
+        dev: 'true' as any,
+      };
+      expect(() => validateDeployOptions(options))
+        .toThrow(ValidationError);
+    });
+
+    it('should reject dev: true with mode: npm (inconsistency)', () => {
+      const options: DeployOptions = {
+        ...minimalCodespacesOptions,
+        dev: true,
+        sudocode: {
+          mode: 'npm',
+        },
+      };
+      expect(() => validateDeployOptions(options))
+        .toThrow(ValidationError);
+    });
+
+    it('should reject dev: false with mode: local (inconsistency)', () => {
+      const options: DeployOptions = {
+        ...minimalCodespacesOptions,
+        dev: false,
+        sudocode: {
+          mode: 'local',
+          localPath: '/path/to/build',
+        },
       };
       expect(() => validateDeployOptions(options))
         .toThrow(ValidationError);

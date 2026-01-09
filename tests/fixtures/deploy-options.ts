@@ -78,6 +78,53 @@ export const localBuildOptions: DeployOptions = {
 };
 
 /**
+ * DeployOptions with dev flag enabled (development mode)
+ * Installs sudocode from the checked-out repository
+ */
+export const devModeOptions: DeployOptions = {
+  git: {
+    owner: 'sudocode-ai',
+    repo: 'sudocode',
+    branch: 'codespace-support',
+  },
+  dev: true,
+  sudocode: {
+    mode: 'local',
+  },
+  server: {
+    port: 3000,
+    keepAliveHours: 4,
+  },
+  providerOptions: {
+    machine: 'basicLinux32gb',
+  } as CodespacesDeployOptions,
+};
+
+/**
+ * DeployOptions with dev flag disabled (production mode)
+ * Installs sudocode from npm registry
+ */
+export const productionModeOptions: DeployOptions = {
+  git: {
+    owner: 'anthropics',
+    repo: 'sudocode',
+  },
+  dev: false,
+  sudocode: {
+    mode: 'npm',
+    version: '1.2.3',
+  },
+  server: {
+    port: 3000,
+    keepAliveHours: 72,
+  },
+  providerOptions: {
+    machine: 'basicLinux32gb',
+    retentionPeriod: 14,
+  } as CodespacesDeployOptions,
+};
+
+/**
  * DeployOptions with direct provider config (Anthropic)
  */
 export const anthropicProviderConfigOptions: DeployOptions = {

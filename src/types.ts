@@ -42,6 +42,33 @@ export interface DeployOptions {
     branch?: string;
   };
 
+  /**
+   * Development mode flag - install sudocode from local repository build instead of npm.
+   * 
+   * When `dev: true`:
+   * - Typically used with `sudocode.mode: 'local'` 
+   * - Builds sudocode from the checked-out repository (git.repo)
+   * - Useful for testing unreleased changes or custom modifications
+   * - May also influence other behavior like branch selection or test execution
+   * 
+   * When `dev: false` (or omitted):
+   * - Typically used with `sudocode.mode: 'npm'`
+   * - Installs sudocode from npm registry
+   * - Production deployment recommended configuration
+   * 
+   * Note: The `dev` flag is a high-level intent, while `sudocode.mode` specifies
+   * the actual installation mechanism. Both should be set consistently.
+   * 
+   * @example
+   * // Development deployment from local build
+   * { dev: true, sudocode: { mode: 'local' } }
+   * 
+   * @example
+   * // Production deployment from npm
+   * { dev: false, sudocode: { mode: 'npm', version: '1.2.3' } }
+   */
+  dev?: boolean;
+
   /** Override workspace directory (optional) */
   workspaceDir?: string;
 

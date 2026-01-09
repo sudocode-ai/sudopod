@@ -126,6 +126,9 @@ export interface DeployOptions {
   repository: string;           // e.g., "username/repo"
   branch?: string;              // Git branch to checkout
   workspaceDir?: string;        // Override workspace directory
+  
+  // Development mode flag
+  dev?: boolean;                // When true, install from local repo build (typically with mode: 'local')
 
   // Installation options
   sudocode: {
@@ -250,6 +253,7 @@ export async function deployRemote(options: DeployOptions) {
   const deployment = await provider.deploy({
     repository: await getCurrentRepo(),
     branch: options.branch,
+    dev: options.dev,        // Enable dev mode for local builds
     sudocode: {
       mode: options.dev ? 'local' : 'npm',
       localPath: options.dev ? process.cwd() : undefined

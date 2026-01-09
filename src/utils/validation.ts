@@ -287,6 +287,30 @@ export function validateDeployOptions(options: DeployOptions): void {
     }
   }
 
+  // Validate dev flag if provided
+  if (options.dev !== undefined) {
+    if (typeof options.dev !== 'boolean') {
+      throw new ValidationError('dev', 'Dev flag must be a boolean when provided');
+    }
+
+    // Warn about potential inconsistency between dev flag and sudocode.mode
+    if (options.dev === true && options.sudocode.mode !== 'local') {
+      throw new ValidationError(
+        'dev',
+        'Dev mode enabled (dev: true) but sudocode.mode is not "local". ' +
+        'When dev is true, sudocode.mode should typically be "local" to install from repository.'
+      );
+    }
+
+    if (options.dev === false && options.sudocode.mode === 'local') {
+      throw new ValidationError(
+        'dev',
+        'Dev mode disabled (dev: false) but sudocode.mode is "local". ' +
+        'When dev is false, sudocode.mode should typically be "npm" for production deployments.'
+      );
+    }
+  }
+
   // Provider-specific options validation is handled by individual providers
   if (!options.providerOptions) {
     throw new ValidationError('providerOptions', 'Provider-specific options are required');
