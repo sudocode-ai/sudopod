@@ -19,5 +19,7 @@ export default defineConfig({
     coverage: {
       enabled: false,
     },
+    // Stop on first failure to conserve codespace resources
+    bail: 1,
   },
 });

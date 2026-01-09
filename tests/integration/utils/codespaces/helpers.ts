@@ -54,6 +54,32 @@ export async function verifyTestPrerequisites(): Promise<void> {
 const trackedCodespaces = new Set<string>();
 
 /**
+ * Track whether tests have failed (to preserve codespaces for debugging)
+ */
+let testsFailed = false;
+
+/**
+ * Mark that a test has failed (prevents automatic cleanup)
+ */
+export function markTestFailed(): void {
+  testsFailed = true;
+}
+
+/**
+ * Check if any tests have failed
+ */
+export function hasTestsFailed(): boolean {
+  return testsFailed;
+}
+
+/**
+ * Reset the test failure flag (useful between test suites)
+ */
+export function resetTestFailureFlag(): void {
+  testsFailed = false;
+}
+
+/**
  * Register a codespace for automatic cleanup
  * @param name Codespace name to track
  */
@@ -88,9 +114,30 @@ export async function safeDeleteCodespace(name: string): Promise<boolean> {
 /**
  * Clean up all tracked codespaces
  * Call this in afterAll() or test teardown
+ * 
+ * NOTE: If tests have failed, codespaces are preserved for debugging.
+ * Set preserveOnFailure=false to force cleanup even on failure.
+ * 
+ * @param preserveOnFailure If true, skip cleanup when tests fail (default: true)
  */
-export async function cleanupTrackedCodespaces(): Promise<void> {
+export async function cleanupTrackedCodespaces(preserveOnFailure: boolean = true): Promise<void> {
   if (trackedCodespaces.size === 0) {
+    return;
+  }
+
+  // Preserve codespaces for debugging if tests failed
+  if (preserveOnFailure && testsFailed) {
+    console.log('');
+    console.log('⚠️  Tests failed - preserving codespaces for debugging:');
+    Array.from(trackedCodespaces).forEach(name => {
+      console.log(`   - ${name}`);
+    });
+    console.log('');
+    console.log('To delete these codespaces manually, run:');
+    Array.from(trackedCodespaces).forEach(name => {
+      console.log(`   gh codespace delete --codespace ${name} --force`);
+    });
+    console.log('');
     return;
   }
 

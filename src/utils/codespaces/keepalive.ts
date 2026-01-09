@@ -16,15 +16,8 @@
  * preventing GitHub's idle timeout from pausing the codespace.
  */
 
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import * as os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { execInCodespace } from './execution.js';
 import type { TrafficMonitorOptions } from './types.js';
-
-const execPromise = promisify(exec);
 
 /**
  * Generate bash script for traffic monitoring daemon
@@ -32,7 +25,7 @@ const execPromise = promisify(exec);
  * The generated script:
  * - Monitors the server log file for modifications
  * - Tracks the last time activity was detected
- * - Writes heartbeats every N minutes (default: 5)
+ * - Writes heartbeats every N minutes (default: 1)
  * - Stops heartbeats after keepalive duration expires
  * - Resumes heartbeats if activity restarts after expiry
  * - Uses PID file for process management
@@ -49,7 +42,7 @@ const execPromise = promisify(exec);
  *   serverPort: 3000,
  *   serverLogPath: '/tmp/sudocode-3000.log',
  *   keepAliveHours: 24,
- *   heartbeatIntervalMinutes: 5
+ *   heartbeatIntervalMinutes: 1
  * });
  * // Returns: "#!/bin/bash\n# Traffic monitoring keepalive daemon..."
  * ```
@@ -59,12 +52,23 @@ function generateDaemonScript(options: TrafficMonitorOptions): string {
     serverPort,
     serverLogPath,
     keepAliveHours,
-    heartbeatIntervalMinutes = 5
+    heartbeatIntervalMinutes = 1
   } = options;
   
   const heartbeatPath = `/tmp/keepalive-heartbeat-${serverPort}.txt`;
-  const keepAliveSeconds = keepAliveHours * 3600;
-  const heartbeatIntervalSeconds = heartbeatIntervalMinutes * 60;
+  // Convert to integers to avoid bash arithmetic issues
+  // Ensure we have valid numbers, default to safe values if not
+  const keepAliveSeconds = Math.floor((keepAliveHours || 24) * 3600);
+  const heartbeatIntervalSeconds = Math.floor((heartbeatIntervalMinutes || 1) * 60);
+  
+  // Debug logging
+  console.log(`[generateDaemonScript] Input: keepAliveHours=${keepAliveHours}, heartbeatIntervalMinutes=${heartbeatIntervalMinutes}`);
+  console.log(`[generateDaemonScript] Calculated: keepAliveSeconds=${keepAliveSeconds}, heartbeatIntervalSeconds=${heartbeatIntervalSeconds}`);
+  
+  // Validate that we got valid positive integers
+  if (keepAliveSeconds <= 0 || heartbeatIntervalSeconds <= 0) {
+    throw new Error(`Invalid keepalive parameters: keepAliveHours=${keepAliveHours}, heartbeatIntervalMinutes=${heartbeatIntervalMinutes}`);
+  }
   
   return `#!/bin/bash
 # Traffic monitoring keepalive daemon for sudocode server
@@ -153,7 +157,7 @@ done
  *   serverPort: 3000,
  *   serverLogPath: '/tmp/sudocode-3000.log',
  *   keepAliveHours: 24,
- *   heartbeatIntervalMinutes: 5
+ *   heartbeatIntervalMinutes: 1
  * });
  * console.log('Traffic monitor daemon started');
  * ```
@@ -166,43 +170,62 @@ export async function startTrafficMonitor(
   // 1. Generate daemon script
   const scriptContent = generateDaemonScript(options);
   
-  // 2. Write to local temp file
-  const localTmpDir = os.tmpdir();
-  const localScriptPath = path.join(localTmpDir, `sudocode-monitor-${serverPort}.sh`);
-  await fs.writeFile(localScriptPath, scriptContent, { mode: 0o755 });
+  // Debug: Log the script content to help diagnose issues
+  console.log(`\nGenerated daemon script for port ${serverPort}:`);
+  console.log('---START SCRIPT---');
+  console.log(scriptContent);
+  console.log('---END SCRIPT---\n');
   
-  try {
-    // 3. Copy to codespace /tmp
-    const remoteScriptPath = `/tmp/sudocode-monitor-${serverPort}.sh`;
-    await execPromise(
-      `gh codespace cp "${localScriptPath}" "${codespaceName}:${remoteScriptPath}"`
-    );
-    
-    // 4. Make executable and start in background
-    await execInCodespace(
-      codespaceName,
-      `chmod +x ${remoteScriptPath} && nohup ${remoteScriptPath} > /tmp/sudocode-monitor-${serverPort}-daemon.log 2>&1 </dev/null &`,
-      { streamOutput: false, timeout: 5000 }
-    );
-    
-    // 5. Verify daemon is running (check for PID file)
-    // Give it a moment to start and write PID file
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const pidFileExists = await execInCodespace(
-      codespaceName,
-      `test -f /tmp/sudocode-monitor-${serverPort}.pid && echo "1" || echo "0"`,
-      { streamOutput: false }
-    );
-    
-    if (pidFileExists.trim() !== '1') {
-      throw new Error('Traffic monitor daemon failed to start: PID file not created');
+  // 2. Write script directly to codespace via SSH using base64 encoding to avoid heredoc issues
+  const remoteScriptPath = `/tmp/sudocode-monitor-${serverPort}.sh`;
+  
+  // Encode script content as base64 to safely transmit through SSH
+  const scriptBase64 = Buffer.from(scriptContent).toString('base64');
+  
+  await execInCodespace(
+    codespaceName,
+    `echo '${scriptBase64}' | base64 -d > ${remoteScriptPath}`,
+    { streamOutput: false, timeout: 10000 }
+  );
+  
+  // 3. Make executable
+  await execInCodespace(
+    codespaceName,
+    `chmod +x ${remoteScriptPath}`,
+    { streamOutput: false, timeout: 5000 }
+  );
+  
+  // 4. Start daemon in background using bash -c to ensure it persists after SSH disconnect
+  await execInCodespace(
+    codespaceName,
+    `bash -c 'nohup ${remoteScriptPath} > /tmp/sudocode-monitor-${serverPort}-daemon.log 2>&1 </dev/null & sleep 0.1'`,
+    { streamOutput: false, timeout: 10000 }
+  );
+  
+  // 5. Verify daemon is running (check for PID file)
+  // Give it a moment to start and write PID file
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const pidFileExists = await execInCodespace(
+    codespaceName,
+    `test -f /tmp/sudocode-monitor-${serverPort}.pid && echo "1" || echo "0"`,
+    { streamOutput: false }
+  );
+  
+  if (pidFileExists.trim() !== '1') {
+    // Get daemon log to help debug
+    let daemonLog = '';
+    try {
+      daemonLog = await execInCodespace(
+        codespaceName,
+        `cat /tmp/sudocode-monitor-${serverPort}-daemon.log 2>&1 || echo "No log file"`,
+        { streamOutput: false }
+      );
+    } catch (e) {
+      daemonLog = 'Could not read daemon log';
     }
-  } finally {
-    // 6. Clean up local temp file
-    await fs.unlink(localScriptPath).catch(() => {
-      // Ignore cleanup errors
-    });
+    
+    throw new Error(`Traffic monitor daemon failed to start: PID file not created\nDaemon log:\n${daemonLog}`);
   }
 }
 

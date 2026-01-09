@@ -154,7 +154,7 @@ export async function installSudocodeFromLocal(
     name,
     commands,
     {
-      timeout: 600000, // 10 minutes
+      timeout: 900000, // 15 minutes (increased from 10 to handle slower installs)
       streamOutput: true
     }
   );

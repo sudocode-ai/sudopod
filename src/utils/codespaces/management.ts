@@ -85,7 +85,7 @@ export async function deleteCodespace(name: string): Promise<void> {
 export async function listCodespaces(): Promise<CodespaceInfo[]> {
   try {
     const { stdout } = await execPromise(
-      'gh codespace list --json name,state,url,repository,branch,createdAt,machine'
+      'gh codespace list --json name,state,repository,createdAt,machineName'
     );
     return JSON.parse(stdout) as CodespaceInfo[];
   } catch (error: any) {
@@ -101,7 +101,7 @@ export async function listCodespaces(): Promise<CodespaceInfo[]> {
 export async function getCodespaceInfo(name: string): Promise<CodespaceInfo> {
   try {
     const { stdout } = await execPromise(
-      `gh codespace view --codespace ${name} --json name,state,url,repository,branch,createdAt,machine`
+      `gh codespace view --codespace ${name} --json name,state,repository,createdAt,machineName,gitStatus`
     );
     return JSON.parse(stdout) as CodespaceInfo;
   } catch (error: any) {

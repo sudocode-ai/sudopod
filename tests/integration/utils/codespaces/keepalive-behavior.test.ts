@@ -40,7 +40,8 @@ import {
   verifyTestPrerequisites,
   trackCodespace,
   cleanupTrackedCodespaces,
-  waitForCondition
+  waitForCondition,
+  markTestFailed
 } from './helpers.js';
 
 describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
@@ -48,15 +49,46 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
   const repository = 'sudocode-ai/sudocode';
   const workspaceDir = '/workspaces/sudocode';
   
-  // Different ports for different tests to avoid conflicts
-  const port1 = 3001; // Test 1
-  const port2 = 3002; // Test 2 & 3
+  // Dynamic port allocation starting from 4000 to avoid conflicts with sudocode (port 3000)
+  let port1: number;
+  let port2: number;
+  
+  /**
+   * Find an available port starting from a given port number
+   * Uses nc -z which returns exit code 0 if port is in use, non-zero if available
+   */
+  async function findAvailablePort(startPort: number, codespaceName: string): Promise<number> {
+    for (let port = startPort; port < startPort + 100; port++) {
+      try {
+        // nc -z returns 0 (success) if port is IN USE, non-zero if available
+        // We want to find a port where nc fails (returns non-zero)
+        const result = await execInCodespace(
+          codespaceName,
+          `nc -z localhost ${port} 2>&1`,
+          { streamOutput: false }
+        );
+        // If we get here, nc succeeded (exit 0), meaning port is IN USE
+        // Continue to next port
+      } catch {
+        // nc failed (non-zero exit), meaning port is AVAILABLE
+        return port;
+      }
+    }
+    throw new Error(`Could not find available port in range ${startPort}-${startPort + 100}`);
+  }
   
   // Verify prerequisites before running tests
   beforeAll(async () => {
     console.log('Verifying integration test prerequisites...');
     await verifyTestPrerequisites();
   }, 30000);
+  
+  // Track test failures to preserve codespaces for debugging
+  afterEach((context) => {
+    if (context.task.result?.state === 'fail') {
+      markTestFailed();
+    }
+  });
   
   // Create and set up codespace before all tests
   beforeAll(async () => {
@@ -94,6 +126,13 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     console.log('Initializing sudocode project...');
     await initializeSudocodeProject(codespaceName, workspaceDir);
     console.log('✓ Project initialized');
+    console.log('');
+    
+    // Find available ports for tests
+    console.log('Finding available ports...');
+    port1 = await findAvailablePort(4000, codespaceName);
+    port2 = await findAvailablePort(port1 + 1, codespaceName);
+    console.log(`✓ Allocated ports: ${port1}, ${port2}`);
     console.log('');
   }, 900000); // 15 minute timeout for full setup
   
@@ -312,7 +351,25 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('');
       
       // Verify daemon is still running (just not writing heartbeats)
+      console.log('Checking if daemon is still running...');
       const isRunning = await isTrafficMonitorRunning(codespaceName, port2);
+      
+      if (!isRunning) {
+        // Daemon died - let's get logs to debug
+        console.error('ERROR: Daemon is not running! Getting daemon logs...');
+        try {
+          const daemonLog = await execInCodespace(
+            codespaceName,
+            `tail -100 /tmp/sudocode-monitor-${port2}-daemon.log 2>&1 || echo "No daemon log found"`,
+            { streamOutput: false }
+          );
+          console.error('Daemon log (last 100 lines):');
+          console.error(daemonLog);
+        } catch (e) {
+          console.error('Could not read daemon log:', e);
+        }
+      }
+      
       expect(isRunning).toBe(true);
       console.log('✓ Daemon is still running (counter expired, waiting for activity)');
       console.log('');
@@ -389,34 +446,34 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       // keep the codespace from being paused by GitHub's idle timeout.
       //
       // Test strategy:
-      // 1. Create codespace with 2-minute idle timeout
-      // 2. Start daemon with 5-minute keepalive
-      // 3. Wait 3+ minutes without any SSH/network activity
+      // 1. Create codespace with 5-minute idle timeout (GitHub minimum)
+      // 2. Start daemon with 15-minute keepalive
+      // 3. Wait 10 minutes without any SSH/network activity
       // 4. Verify codespace is still Available (not paused/stopped)
       // 5. Verify server still responds
       //
-      // Success criteria: If codespace is still alive after 3 minutes,
-      // then file writes are keeping it alive (since idle timeout is 2 minutes)
+      // Success criteria: If codespace is still alive after 10 minutes,
+      // then file writes are keeping it alive (since idle timeout is 5 minutes)
       //
-      // Expected test duration: ~7-8 minutes
+      // Expected test duration: ~18-20 minutes
       
       console.log('Test 4: Verifying filesystem activity prevents codespace timeout');
       console.log('-----------------------------------------------------------------');
       console.log('');
-      console.log('Creating a NEW codespace with 2-minute idle timeout...');
+      console.log('Creating a NEW codespace with 5-minute idle timeout...');
       
-      // Create a fresh codespace with 2-minute idle timeout
+      // Create a fresh codespace with 5-minute idle timeout (GitHub minimum)
       const testCodespace = await createCodespace({
         repository,
         machine: 'basicLinux32gb',
-        idleTimeout: 2, // 2 minutes
+        idleTimeout: 5, // 5 minutes (GitHub minimum)
         retentionPeriod: 1
       });
       
       const testCodespaceName = testCodespace.name;
       trackCodespace(testCodespaceName);
       console.log(`✓ Created codespace: ${testCodespaceName}`);
-      console.log('  - Idle timeout: 2 minutes');
+      console.log('  - Idle timeout: 5 minutes');
       console.log('');
       
       try {
@@ -439,24 +496,29 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         console.log('✓ Project initialized');
         console.log('');
         
+        // Find available port for test
+        console.log('Finding available port...');
+        const testPort = await findAvailablePort(4000, testCodespaceName);
+        console.log(`✓ Allocated port: ${testPort}`);
+        console.log('');
+        
         // Start server
-        const testPort = 3003;
         console.log(`Starting server on port ${testPort}...`);
         await startSudocodeServer(testCodespaceName, testPort, workspaceDir);
         await waitForPortListening(testCodespaceName, testPort, 30);
         console.log('✓ Server is running');
         console.log('');
         
-        // Start monitor with 5-minute keepalive and 1-minute heartbeat interval
-        console.log('Starting traffic monitor with 5-minute keepalive...');
-        console.log('- Keepalive: 5 minutes');
+        // Start monitor with 15-minute keepalive and 1-minute heartbeat interval
+        console.log('Starting traffic monitor with 15-minute keepalive...');
+        console.log('- Keepalive: 15 minutes');
         console.log('- Heartbeat interval: 1 minute');
-        console.log('- Codespace idle timeout: 2 minutes');
+        console.log('- Codespace idle timeout: 5 minutes');
         await startTrafficMonitor({
           codespaceName: testCodespaceName,
           serverPort: testPort,
           serverLogPath: `/tmp/sudocode-${testPort}.log`,
-          keepAliveHours: 5 / 60, // 5 minutes
+          keepAliveHours: 15 / 60, // 15 minutes
           heartbeatIntervalMinutes: 1 // 1 minute
         });
         console.log('✓ Traffic monitor started');
@@ -485,21 +547,21 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         console.log('✓ First heartbeat confirmed');
         console.log('');
         
-        // Now wait 3 minutes WITHOUT any SSH/network activity
+        // Now wait 10 minutes WITHOUT any SSH/network activity
         console.log('========================================');
-        console.log('CRITICAL TEST PERIOD: Waiting 3 minutes');
+        console.log('CRITICAL TEST PERIOD: Waiting 10 minutes');
         console.log('========================================');
         console.log('');
         console.log('No SSH commands will be run during this time.');
         console.log('The daemon should write heartbeats every 1 minute.');
-        console.log('Codespace idle timeout is 2 minutes.');
-        console.log('If codespace is still alive after 3 minutes,');
+        console.log('Codespace idle timeout is 5 minutes.');
+        console.log('If codespace is still alive after 10 minutes,');
         console.log('then file writes are keeping it alive!');
         console.log('');
         console.log('Waiting...');
         
-        // Wait exactly 3 minutes
-        const waitMinutes = 3;
+        // Wait exactly 10 minutes
+        const waitMinutes = 10;
         const waitMs = waitMinutes * 60 * 1000;
         await new Promise(resolve => setTimeout(resolve, waitMs));
         
@@ -531,17 +593,17 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         );
         const count = parseInt(heartbeatCount.trim());
         
-        // Should have at least 3 heartbeats (one per minute for 3 minutes)
-        expect(count).toBeGreaterThanOrEqual(3);
-        console.log(`✓ Heartbeat file has ${count} entries (expected >= 3)`);
+        // Should have at least 10 heartbeats (one per minute for 10 minutes)
+        expect(count).toBeGreaterThanOrEqual(10);
+        console.log(`✓ Heartbeat file has ${count} entries (expected >= 10)`);
         console.log('');
         
         console.log('========================================');
         console.log('TEST SUCCESS!');
         console.log('========================================');
         console.log('');
-        console.log('The codespace remained alive for 3+ minutes despite');
-        console.log('having a 2-minute idle timeout. This proves that the');
+        console.log('The codespace remained alive for 10+ minutes despite');
+        console.log('having a 5-minute idle timeout. This proves that the');
         console.log('daemon\'s filesystem writes (heartbeat file) are');
         console.log('keeping the codespace alive!');
         console.log('');
@@ -552,7 +614,7 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         await cleanupTrackedCodespaces();
         console.log('✓ Test codespace deleted');
       }
-    }, 900000); // 15 minute timeout (allows for installation + 3 minute wait)
+    }, 1200000); // 20 minute timeout (allows for installation + 10 minute wait)
   });
   
   // Summary test that runs after all others
