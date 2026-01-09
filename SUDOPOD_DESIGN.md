@@ -36,17 +36,14 @@
 ### Flow
 
 ```
-┌─────────────────┐
-│  sudocode CLI   │──────────┐
-└─────────────────┘          │
-                             ▼
-                        ┌──────────┐         ┌─────────────┐
-                        │  sudopod │────────▶│ Codespaces  │
-                        └──────────┘         └─────────────┘
-                             ▲
-┌─────────────────┐          │               ┌─────────────┐
-│ sudocode-hub    │──────────┘──────────────▶│   Coder     │
-└─────────────────┘                          └─────────────┘
+┌─────────────────┐         ┌──────────┐         ┌─────────────┐
+│  sudocode CLI   │────────▶│  sudopod │────────▶│ Codespaces  │
+└─────────────────┘         └──────────┘         └─────────────┘
+
+
+┌─────────────────┐         ┌──────────┐         ┌─────────────┐
+│ sudocode-hub    │────────▶│  sudopod │────────▶│   Coder     │
+└─────────────────┘         └──────────┘         └─────────────┘
 ```
 
 ---
@@ -140,8 +137,8 @@ export interface DeployOptions {
   // Server options
   server: {
     port?: number;              // Default: 3000
-    keepAliveHours?: number;    // How long to keep alive (provider-specific)
-    idleTimeout?: number;       // Idle timeout in minutes (provider-specific)
+    keepAliveHours?: number;    // How long to keep VM alive before shutdown (hours)
+    idleTimeout?: number;       // Idle timeout before pausing VM (minutes)
   };
 
   // Provider-specific options
@@ -151,27 +148,28 @@ export interface DeployOptions {
 /**
  * Codespaces-specific options
  *
- * Note: keepAliveHours and idleTimeout from DeployOptions are IGNORED
- * GitHub enforces fixed values:
- * - idleTimeout: 240 minutes (4 hours, non-configurable)
- * - retentionPeriod: 14 days (non-configurable)
+ * Note: idleTimeout from DeployOptions is IGNORED for Codespaces
+ * GitHub Codespaces doesn't reliably auto-resume processes or auto-forward
+ * ports after pausing, so we cannot use pause/resume. Instead, we rely on
+ * keepAliveHours and implement a keepalive mechanism to bypass the codespace's
+ * own idle timeout, keeping the VM running continuously until shutdown.
+ *
+ * TODO: Implement keepalive mechanism to bypass codespace idle timeout
  */
 export interface CodespacesDeployOptions {
   machine?: string;             // Default: 'basicLinux32gb'
-  // Note: GitHub limits are not configurable via API
 }
 
 /**
  * Coder-specific options
  *
- * Note: keepAliveHours and idleTimeout from DeployOptions ARE HONORED
- * Coder supports configurable TTL and idle timeout
+ * Note: Both keepAliveHours and idleTimeout from DeployOptions ARE HONORED
+ * Coder supports fully configurable TTL and idle timeout values
  */
 export interface CoderDeployOptions {
   template?: string;            // Coder template name
   parameters?: Record<string, string>; // Template parameters
   autoStart?: boolean;          // Auto-start workspace (default: true)
-  // ttl and idle timeout controlled by server.keepAliveHours/idleTimeout
 }
 ```
 
@@ -191,19 +189,19 @@ export interface Deployment {
   createdAt: string;            // ISO 8601
   urls: DeploymentUrls;
 
+  // VM lifecycle configuration (NOT in provider metadata)
+  keepAliveHours: number;       // How long VM stays alive before shutdown
+  idleTimeout?: number;         // Idle timeout before pausing VM (ignored by Codespaces)
+
   // Provider-specific metadata (opaque to sudopod consumers)
   metadata: {
     codespaces?: {
       machine: string;
-      idleTimeout: number;      // Always 240 for GitHub
-      retentionPeriod: number;  // Always 14 for GitHub
     };
     coder?: {
       template: string;
       workspaceId: string;
       ownerId: string;
-      actualKeepAliveHours?: number;
-      actualIdleTimeout?: number;
     };
   };
 }
@@ -248,7 +246,7 @@ export async function deployRemote(options: DeployOptions) {
   // Create codespaces provider (uses gh CLI auth)
   const provider = createProvider({ type: 'codespaces' });
 
-  // Deploy (keepAliveHours ignored by codespaces)
+  // Deploy
   const deployment = await provider.deploy({
     repository: await getCurrentRepo(),
     branch: options.branch,
@@ -258,8 +256,8 @@ export async function deployRemote(options: DeployOptions) {
     },
     server: {
       port: 3000,
-      keepAliveHours: 72,  // Ignored by codespaces
-      idleTimeout: 240     // Ignored by codespaces
+      keepAliveHours: 72,    // Keep VM alive for 3 days before shutdown
+      idleTimeout: 240       // Ignored - codespaces can't reliably pause/resume
     },
     providerOptions: {
       machine: options.machine || 'basicLinux32gb'
@@ -298,7 +296,7 @@ export async function handleDeploy(req: Request, userId: string) {
     apiKey: coderCreds.apiKey
   });
 
-  // Deploy (keepAliveHours HONORED by coder)
+  // Deploy
   const deployment = await provider.deploy({
     repository: req.body.repository,
     branch: req.body.branch,
@@ -308,8 +306,8 @@ export async function handleDeploy(req: Request, userId: string) {
     },
     server: {
       port: 3000,
-      keepAliveHours: 168,  // 1 week for hosted - USED by coder
-      idleTimeout: 60       // 1 hour idle - USED by coder
+      keepAliveHours: 168,  // Keep VM alive for 1 week before shutdown
+      idleTimeout: 60       // Pause VM after 1 hour idle
     },
     providerOptions: {
       template: 'sudocode-workspace',
@@ -463,19 +461,23 @@ sudopod/
 ## Configuration Philosophy
 
 ### Top-Level Parameters (Provider-Agnostic)
-- `server.keepAliveHours`: How long to keep environment alive
-- `server.idleTimeout`: Idle timeout before shutdown
+These parameters are part of the core `Deployment` interface, NOT provider-specific metadata:
+- `server.keepAliveHours`: How long to keep VM alive before complete shutdown
+- `server.idleTimeout`: Idle timeout before pausing VM (cost savings)
 - `server.port`: Server port
 
 ### Provider Behavior
-- **Codespaces**: Ignores these parameters (GitHub has fixed limits)
-- **Coder**: Honors these parameters (configurable via Coder API)
+- **Codespaces**:
+  - `keepAliveHours`: HONORED - controls when VM shuts down completely
+  - `idleTimeout`: IGNORED - GitHub doesn't reliably auto-resume processes/ports, so we bypass pause with keepalive mechanism
+- **Coder**:
+  - Both `keepAliveHours` and `idleTimeout`: HONORED and fully configurable (can reliably pause/resume)
 
 ### Rationale
-- Users shouldn't need to know provider-specific constraints
+- Users shouldn't need to know provider-specific constraints upfront
 - Interface stays clean and provider-agnostic
-- Providers internally map/ignore as needed
-- Metadata in `Deployment` exposes actual values used
+- Providers internally map/ignore parameters as needed
+- Deployment object exposes actual values used for transparency
 
 ---
 
