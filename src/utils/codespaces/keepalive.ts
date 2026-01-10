@@ -78,17 +78,41 @@ function generateDaemonScript(options: TrafficMonitorOptions): string {
 # to keep the codespace alive. It stops writing heartbeats after the
 # keepalive duration expires, but resumes if activity restarts.
 
+# Enable strict mode (but not -e, as functions return non-zero by design)
+set -u
+
 SERVER_LOG="${serverLogPath}"
 HEARTBEAT_FILE="${heartbeatPath}"
 KEEPALIVE_SECONDS=${keepAliveSeconds}
 HEARTBEAT_INTERVAL=${heartbeatIntervalSeconds}
 DAEMON_PID_FILE="/tmp/sudocode-monitor-${serverPort}.pid"
+DAEMON_LOG="/tmp/sudocode-monitor-${serverPort}-daemon.log"
+
+# Log function for debugging
+log() {
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >> "$DAEMON_LOG"
+}
 
 # Write our PID for process management
 echo $$ > "$DAEMON_PID_FILE"
+log "Daemon started with PID \$\$"
+log "Keepalive: \$KEEPALIVE_SECONDS seconds, Heartbeat interval: \$HEARTBEAT_INTERVAL seconds"
 
-# Initialize last activity time to now
-last_activity=$(date +%s)
+# Initialize last activity time to the log file's current mtime
+# If log file doesn't exist yet, use current time
+if [ -f "$SERVER_LOG" ]; then
+  last_activity=$(stat -c %Y "$SERVER_LOG" 2>/dev/null || stat -f %m "$SERVER_LOG" 2>/dev/null || echo "0")
+  # Fallback to current time if stat failed
+  if [ "$last_activity" = "0" ]; then
+    last_activity=$(date +%s)
+    log "Could not read log file mtime, initialized to current time: \$last_activity"
+  else
+    log "Initialized from log file mtime: \$last_activity"
+  fi
+else
+  last_activity=$(date +%s)
+  log "Log file not found, initialized to current time: \$last_activity"
+fi
 
 # Function to check for new log activity
 # Returns 0 if activity detected, 1 otherwise
@@ -96,11 +120,11 @@ check_activity() {
   if [ -f "$SERVER_LOG" ]; then
     # Get the last modified time of the log file
     # Try Linux stat first (-c), fall back to macOS stat (-f)
-    local log_mtime=$(stat -c %Y "$SERVER_LOG" 2>/dev/null || stat -f %m "$SERVER_LOG" 2>/dev/null)
+    local log_mtime=$(stat -c %Y "$SERVER_LOG" 2>/dev/null || stat -f %m "$SERVER_LOG" 2>/dev/null || echo "0")
     
-    # If log was modified more recently than our last check, update last_activity
-    if [ "$log_mtime" -gt "$last_activity" ]; then
-      last_activity=$(date +%s)
+    # Only update if we got a valid mtime
+    if [ "$log_mtime" != "0" ] && [ "$log_mtime" -gt "$last_activity" ]; then
+      last_activity="$log_mtime"
       return 0  # Activity detected
     fi
   fi
@@ -113,11 +137,14 @@ write_heartbeat() {
 }
 
 # Main monitoring loop
+log "Entering monitoring loop"
 while true; do
   current_time=$(date +%s)
   
   # Check for new activity (updates last_activity if found)
-  check_activity
+  if check_activity; then
+    log "Activity detected! Updated last_activity to \$last_activity"
+  fi
   
   # Calculate time since last activity
   time_since_activity=$((current_time - last_activity))
@@ -125,6 +152,9 @@ while true; do
   # If we're within the keepalive window, write heartbeat
   if [ "$time_since_activity" -lt "$KEEPALIVE_SECONDS" ]; then
     write_heartbeat
+    log "Heartbeat written (time since activity: \${time_since_activity}s / \${KEEPALIVE_SECONDS}s)"
+  else
+    log "Keepalive expired (time since activity: \${time_since_activity}s / \${KEEPALIVE_SECONDS}s), skipping heartbeat"
   fi
   
   # Sleep until next heartbeat interval
