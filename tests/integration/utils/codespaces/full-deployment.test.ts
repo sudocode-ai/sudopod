@@ -14,7 +14,7 @@
  * 6. Start sudocode server
  * 7. Forward port and get public URL
  * 8. Start traffic monitor daemon
- * 9. Verify heartbeat file exists and is being written
+ * 9. Verify SSH keepalive commands are executing
  * 10. Clean up codespace (always runs, even on failure)
  * 
  * Expected Duration: ~10-15 minutes
@@ -23,9 +23,21 @@
  * - GitHub CLI installed and authenticated
  * - Access to sudocode-ai/sudocode repository
  * - Codespace creation permissions
+ * 
+ * IMPORTANT: These tests require external resources and should NOT run by default.
+ * Set the environment variable RUN_INTEGRATION_TESTS=1 to enable these tests.
+ * 
+ * Example: RUN_INTEGRATION_TESTS=1 npm run test:integration
  */
 
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+
+// Skip integration tests unless explicitly enabled
+if (!process.env.RUN_INTEGRATION_TESTS) {
+  console.log('\n⚠️  Skipping integration tests: RUN_INTEGRATION_TESTS not set');
+  console.log('   To run integration tests: RUN_INTEGRATION_TESTS=1 npm run test:integration\n');
+  process.exit(0);
+}
 import {
   createCodespace,
   deleteCodespace,
@@ -213,12 +225,12 @@ describe('Full Codespace Deployment (Integration)', () => {
       serverPort: port,
       serverLogPath: `/tmp/sudocode-${port}.log`,
       keepAliveHours: 1, // Short duration for testing
-      heartbeatIntervalMinutes: 1 // Frequent heartbeats for testing
+      sshIntervalMinutes: 0.5 // Frequent SSH keepalive (30 seconds) for testing
     });
     
     console.log('✓ Traffic monitor daemon started');
     
-    // Wait a bit for daemon to initialize and write first heartbeat
+    // Wait a bit for daemon to initialize
     console.log('Waiting for daemon to initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
     
@@ -235,55 +247,43 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('');
   }, 30000); // 30 second timeout
   
-  it('should verify heartbeat file exists and is being written', async () => {
-    console.log('Step 8: Verifying heartbeat mechanism...');
+  it('should verify SSH keepalive commands are executing', async () => {
+    console.log('Step 8: Verifying SSH keepalive mechanism...');
     
-    // Check heartbeat file exists
-    console.log('Checking for heartbeat file...');
-    const heartbeatExists = await execInCodespace(
-      codespaceName,
-      `test -f /tmp/keepalive-heartbeat-${port}.txt && echo "exists"`,
-      { streamOutput: false }
-    );
-    
-    expect(heartbeatExists.trim()).toBe('exists');
-    console.log('✓ Heartbeat file exists');
-    
-    // Wait for at least one heartbeat to be written (up to 75 seconds)
-    console.log('Waiting for heartbeat to be written (up to 75 seconds)...');
-    let heartbeatCount = 0;
-    const maxWait = 75000; // 75 seconds
+    // Wait for at least one SSH command to be executed (up to 45 seconds)
+    console.log('Waiting for SSH keepalive commands to execute (up to 45 seconds)...');
+    let sshFound = false;
+    const maxWait = 45000; // 45 seconds
     const checkInterval = 5000; // 5 seconds
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWait) {
-      const countResult = await execInCodespace(
+      const daemonLog = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port}.txt || echo "0"`,
+        `cat /tmp/sudocode-monitor-${port}-daemon.log 2>/dev/null || echo ""`,
         { streamOutput: false }
       );
       
-      heartbeatCount = parseInt(countResult.trim());
-      
-      if (heartbeatCount > 0) {
+      if (daemonLog.includes('SSH keepalive executed successfully')) {
+        sshFound = true;
         break;
       }
       
       await new Promise(resolve => setTimeout(resolve, checkInterval));
     }
     
-    expect(heartbeatCount).toBeGreaterThan(0);
-    console.log(`✓ Heartbeat file has ${heartbeatCount} entry/entries`);
+    expect(sshFound).toBe(true);
+    console.log('✓ SSH keepalive commands are executing');
     
-    // Show sample heartbeat
-    const heartbeatSample = await execInCodespace(
+    // Show sample from daemon log
+    const daemonLogSample = await execInCodespace(
       codespaceName,
-      `head -1 /tmp/keepalive-heartbeat-${port}.txt`,
+      `grep "SSH keepalive executed successfully" /tmp/sudocode-monitor-${port}-daemon.log | head -1`,
       { streamOutput: false }
     );
-    console.log(`  Sample heartbeat: ${heartbeatSample.trim()}`);
+    console.log(`  Sample log entry: ${daemonLogSample.trim()}`);
     console.log('');
-  }, 90000); // 90 second timeout (to allow for heartbeat interval)
+  }, 60000); // 60 second timeout (to allow for SSH interval)
   
   it('should verify daemon is still running', async () => {
     console.log('Step 9: Final verification of daemon status...');
@@ -324,7 +324,7 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('✓ Server running on port', port);
     console.log('✓ Port forwarded with public URL');
     console.log('✓ Traffic monitor daemon active');
-    console.log('✓ Heartbeat file being written');
+    console.log('✓ SSH keepalive commands executing');
     console.log('');
   }, 30000); // 30 second timeout
 });

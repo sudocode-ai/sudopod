@@ -4,7 +4,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    // Only include unit tests by default (exclude integration and e2e tests)
+    include: ['tests/unit/**/*.test.ts'],
+    exclude: ['**/integration/**', '**/e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -206,9 +206,10 @@ export function validateModelConfig(models?: DeployOptions['models']): void {
 /**
  * Validates sudocode installation configuration
  * @param sudocode - Sudocode configuration to validate
+ * @param isDevMode - Whether dev mode is enabled (localPath optional in dev mode)
  * @throws ValidationError if validation fails
  */
-export function validateSudocodeConfig(sudocode: DeployOptions['sudocode']): void {
+export function validateSudocodeConfig(sudocode: DeployOptions['sudocode'], isDevMode: boolean = false): void {
   if (!sudocode) {
     throw new ValidationError('sudocode', 'Sudocode configuration is required');
   }
@@ -224,8 +225,15 @@ export function validateSudocodeConfig(sudocode: DeployOptions['sudocode']): voi
   }
 
   if (sudocode.mode === 'local') {
-    if (!sudocode.localPath || typeof sudocode.localPath !== 'string' || sudocode.localPath.trim() === '') {
+    // In dev mode, localPath is optional (will use the checked-out repository)
+    // In non-dev mode, localPath is required
+    if (!isDevMode && (!sudocode.localPath || typeof sudocode.localPath !== 'string' || sudocode.localPath.trim() === '')) {
       throw new ValidationError('sudocode.localPath', 'Local path is required for local mode and must be a non-empty string');
+    }
+    
+    // If localPath is provided, validate it's a non-empty string
+    if (sudocode.localPath !== undefined && (typeof sudocode.localPath !== 'string' || sudocode.localPath.trim() === '')) {
+      throw new ValidationError('sudocode.localPath', 'Local path must be a non-empty string when provided');
     }
   }
 }
@@ -277,7 +285,7 @@ export function validateDeployOptions(options: DeployOptions): void {
   validateGitConfig(options.git);
   validateAgentConfig(options.agents);
   validateModelConfig(options.models);
-  validateSudocodeConfig(options.sudocode);
+  validateSudocodeConfig(options.sudocode, options.dev === true);
   validateServerConfig(options.server);
 
   // Validate workspace directory if provided

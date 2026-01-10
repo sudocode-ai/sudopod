@@ -15,9 +15,21 @@
  * - Installs from local repo using npm install, build, link
  * - Verifies all components are properly linked
  * - Cleans up codespace after test
+ * 
+ * IMPORTANT: These tests require external resources and should NOT run by default.
+ * Set the environment variable RUN_INTEGRATION_TESTS=1 to enable these tests.
+ * 
+ * Example: RUN_INTEGRATION_TESTS=1 npm run test:integration
  */
 
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+
+// Skip integration tests unless explicitly enabled
+if (!process.env.RUN_INTEGRATION_TESTS) {
+  console.log('\n⚠️  Skipping integration tests: RUN_INTEGRATION_TESTS not set');
+  console.log('   To run integration tests: RUN_INTEGRATION_TESTS=1 npm run test:integration\n');
+  process.exit(0);
+}
 import {
   createCodespace,
   deleteCodespace,

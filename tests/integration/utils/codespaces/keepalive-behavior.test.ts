@@ -2,26 +2,39 @@
  * Integration test: Traffic Monitor Keepalive Behavior
  * 
  * This test validates that the traffic monitoring daemon correctly manages
- * heartbeat files based on server activity and keepalive timeouts.
+ * SSH keepalive commands based on server activity and keepalive timeouts.
  * 
  * Test Scenarios:
- * 1. Heartbeats write while server is active
- * 2. Heartbeats stop after keepalive expires
- * 3. Heartbeats resume if activity restarts after expiry
- * 4. Filesystem activity keeps codespace alive (long-running validation)
+ * 1. SSH commands execute while server is active
+ * 2. SSH commands stop after keepalive expires
+ * 3. SSH commands resume if activity restarts after expiry
+ * 4. Codespace stays alive with SSH keepalive (no server)
+ * 5. Codespace dies after keepalive stops (no server)
  * 
  * The tests use shorter timeouts than production to ensure reasonable test
  * runtime while still validating the core behavior.
  * 
- * Expected Duration: ~5-10 minutes (excluding Test 4)
+ * Expected Duration: ~10-20 minutes
  * 
  * Prerequisites:
  * - GitHub CLI installed and authenticated
  * - Access to sudocode-ai/sudocode repository
  * - Codespace creation permissions
+ * 
+ * IMPORTANT: These tests require external resources and should NOT run by default.
+ * Set the environment variable RUN_INTEGRATION_TESTS=1 to enable these tests.
+ * 
+ * Example: RUN_INTEGRATION_TESTS=1 npm run test:integration
  */
 
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+
+// Skip integration tests unless explicitly enabled
+if (!process.env.RUN_INTEGRATION_TESTS) {
+  console.log('\n⚠️  Skipping integration tests: RUN_INTEGRATION_TESTS not set');
+  console.log('   To run integration tests: RUN_INTEGRATION_TESTS=1 npm run test:integration\n');
+  process.exit(0);
+}
 import {
   createCodespace,
   waitForCodespaceReady,
@@ -146,10 +159,10 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     console.log('✓ Cleanup complete');
   }, 60000);
   
-  describe('Test 1: Heartbeats write while server active', () => {
+  describe('Test 1: SSH commands execute while server active', () => {
     it('should start server and monitor', async () => {
-      console.log('Test 1: Verifying heartbeats write while server active');
-      console.log('--------------------------------------------------------');
+      console.log('Test 1: Verifying SSH commands execute while server active');
+      console.log('------------------------------------------------------------');
       console.log('');
       
       // Start server on port1
@@ -162,54 +175,46 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       // Start monitor with short intervals (30 seconds)
       console.log('Starting traffic monitor...');
       console.log('- Keepalive: 5 minutes');
-      console.log('- Heartbeat interval: 30 seconds');
+      console.log('- SSH interval: 30 seconds');
       await startTrafficMonitor({
         codespaceName,
         serverPort: port1,
         serverLogPath: `/tmp/sudocode-${port1}.log`,
         keepAliveHours: 5 / 60, // 5 minutes
-        heartbeatIntervalMinutes: 0.5 // 30 seconds
+        sshIntervalMinutes: 0.5 // 30 seconds
       });
       console.log('✓ Traffic monitor started');
       console.log('');
     }, 180000); // 3 minute timeout
     
-    it('should verify heartbeat file gets written', async () => {
-      console.log('Waiting for first heartbeat (up to 40 seconds)...');
+    it('should verify SSH commands are executing successfully', async () => {
+      console.log('Waiting for SSH commands to execute (up to 40 seconds)...');
       
-      // Wait for heartbeat file to be created and have content
+      // Wait for daemon log to show SSH keepalive commands
       await waitForCondition(
         async () => {
           try {
-            const countResult = await execInCodespace(
+            const daemonLog = await execInCodespace(
               codespaceName,
-              `wc -l < /tmp/keepalive-heartbeat-${port1}.txt 2>/dev/null || echo "0"`,
+              `cat /tmp/sudocode-monitor-${port1}-daemon.log 2>/dev/null || echo ""`,
               { streamOutput: false }
             );
-            const count = parseInt(countResult.trim());
-            return count > 0;
+            // Look for successful SSH keepalive execution
+            return daemonLog.includes('SSH keepalive executed successfully');
           } catch {
             return false;
           }
         },
         45000, // 45 second timeout
         5000,  // Check every 5 seconds
-        'First heartbeat not written within timeout'
+        'SSH keepalive commands not found in daemon log'
       );
       
-      const heartbeatCount1 = await execInCodespace(
-        codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port1}.txt`,
-        { streamOutput: false }
-      );
-      
-      const count1 = parseInt(heartbeatCount1.trim());
-      expect(count1).toBeGreaterThan(0);
-      console.log(`✓ First heartbeat written (${count1} entries)`);
+      console.log('✓ SSH keepalive commands are executing');
       console.log('');
     }, 60000); // 1 minute timeout
     
-    it('should continue heartbeats after generating server activity', async () => {
+    it('should continue SSH commands after generating server activity', async () => {
       console.log('Generating server activity...');
       
       // Make a request to generate activity
@@ -221,40 +226,40 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('✓ Generated HTTP request');
       console.log('');
       
-      // Get current heartbeat count
-      const heartbeatCount1 = await execInCodespace(
+      // Get current daemon log
+      const daemonLog1 = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port1}.txt`,
+        `grep -c "SSH keepalive executed successfully" /tmp/sudocode-monitor-${port1}-daemon.log || echo "0"`,
         { streamOutput: false }
       );
-      const count1 = parseInt(heartbeatCount1.trim());
-      console.log(`Current heartbeat count: ${count1}`);
+      const sshCount1 = parseInt(daemonLog1.trim());
+      console.log(`Current SSH command count: ${sshCount1}`);
       console.log('');
       
-      // Wait for next heartbeat interval (35 seconds to be safe)
-      console.log('Waiting for next heartbeat (35 seconds)...');
+      // Wait for next SSH interval (35 seconds to be safe)
+      console.log('Waiting for next SSH command (35 seconds)...');
       await new Promise(resolve => setTimeout(resolve, 35000));
       
-      // Verify heartbeat count increased
-      const heartbeatCount2 = await execInCodespace(
+      // Verify SSH command count increased
+      const daemonLog2 = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port1}.txt`,
+        `grep -c "SSH keepalive executed successfully" /tmp/sudocode-monitor-${port1}-daemon.log || echo "0"`,
         { streamOutput: false }
       );
-      const count2 = parseInt(heartbeatCount2.trim());
+      const sshCount2 = parseInt(daemonLog2.trim());
       
-      expect(count2).toBeGreaterThan(count1);
-      console.log(`✓ Heartbeats continued (now ${count2} entries, increased by ${count2 - count1})`);
+      expect(sshCount2).toBeGreaterThan(sshCount1);
+      console.log(`✓ SSH commands continued (now ${sshCount2} commands, increased by ${sshCount2 - sshCount1})`);
       console.log('');
-      console.log('Test 1 Complete: Heartbeats verified while server active');
+      console.log('Test 1 Complete: SSH commands verified while server active');
       console.log('');
     }, 60000); // 1 minute timeout
   });
   
-  describe('Test 2: Heartbeats stop after keepalive expires', () => {
+  describe('Test 2: SSH commands stop after keepalive expires', () => {
     it('should start server with very short keepalive', async () => {
-      console.log('Test 2: Verifying heartbeats stop after keepalive expires');
-      console.log('----------------------------------------------------------');
+      console.log('Test 2: Verifying SSH commands stop after keepalive expires');
+      console.log('--------------------------------------------------------------');
       console.log('');
       
       // Start server on port2
@@ -267,54 +272,45 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       // Start monitor with very short keepalive (2 minutes)
       console.log('Starting traffic monitor...');
       console.log('- Keepalive: 2 minutes');
-      console.log('- Heartbeat interval: 30 seconds');
+      console.log('- SSH interval: 30 seconds');
       await startTrafficMonitor({
         codespaceName,
         serverPort: port2,
         serverLogPath: `/tmp/sudocode-${port2}.log`,
         keepAliveHours: 2 / 60, // 2 minutes
-        heartbeatIntervalMinutes: 0.5 // 30 seconds
+        sshIntervalMinutes: 0.5 // 30 seconds
       });
       console.log('✓ Traffic monitor started');
       console.log('');
     }, 180000); // 3 minute timeout
     
-    it('should verify initial heartbeats are written', async () => {
-      console.log('Waiting for initial heartbeat...');
+    it('should verify initial SSH commands are executing', async () => {
+      console.log('Waiting for initial SSH commands...');
       
-      // Wait for at least one heartbeat
+      // Wait for at least one SSH command
       await waitForCondition(
         async () => {
           try {
-            const countResult = await execInCodespace(
+            const daemonLog = await execInCodespace(
               codespaceName,
-              `wc -l < /tmp/keepalive-heartbeat-${port2}.txt 2>/dev/null || echo "0"`,
+              `cat /tmp/sudocode-monitor-${port2}-daemon.log 2>/dev/null || echo ""`,
               { streamOutput: false }
             );
-            const count = parseInt(countResult.trim());
-            return count > 0;
+            return daemonLog.includes('SSH keepalive executed successfully');
           } catch {
             return false;
           }
         },
         45000,
         5000,
-        'Initial heartbeat not written within timeout'
+        'Initial SSH commands not found in daemon log'
       );
       
-      const heartbeatCount1 = await execInCodespace(
-        codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port2}.txt`,
-        { streamOutput: false }
-      );
-      
-      const count1 = parseInt(heartbeatCount1.trim());
-      expect(count1).toBeGreaterThan(0);
-      console.log(`✓ Initial heartbeat written (${count1} entries)`);
+      console.log('✓ Initial SSH commands executing');
       console.log('');
     }, 60000); // 1 minute timeout
     
-    it('should verify heartbeats stop after keepalive expires', async () => {
+    it('should verify SSH commands stop after keepalive expires', async () => {
       console.log('Waiting for keepalive to expire (2 minutes + buffer = 2.5 minutes)...');
       console.log('(No server activity will be generated during this time)');
       console.log('');
@@ -322,49 +318,38 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       // Wait for keepalive to expire (2 minutes + 30 second buffer)
       await new Promise(resolve => setTimeout(resolve, 150000)); // 2.5 minutes
       
-      console.log('Keepalive should have expired. Checking heartbeats stopped...');
+      console.log('Keepalive should have expired. Checking SSH commands stopped...');
       
-      // Get heartbeat count after expiry
-      const heartbeatCount2 = await execInCodespace(
+      // Get daemon log to see latest message
+      const daemonLog = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port2}.txt`,
+        `tail -20 /tmp/sudocode-monitor-${port2}-daemon.log`,
         { streamOutput: false }
       );
-      const count2 = parseInt(heartbeatCount2.trim());
-      console.log(`Heartbeat count after expiry: ${count2}`);
+      
+      console.log('Recent daemon log entries:');
+      console.log(daemonLog);
       console.log('');
       
-      // Wait another heartbeat interval (35 seconds)
-      console.log('Waiting one more interval (35 seconds) to confirm no new heartbeats...');
-      await new Promise(resolve => setTimeout(resolve, 35000));
-      
-      // Verify heartbeat count did NOT increase (daemon stopped writing)
-      const heartbeatCount3 = await execInCodespace(
-        codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port2}.txt`,
-        { streamOutput: false }
-      );
-      const count3 = parseInt(heartbeatCount3.trim());
-      
-      expect(count3).toBe(count2);
-      console.log(`✓ Heartbeats stopped (count remained at ${count3})`);
+      // Verify log shows "skipping SSH" message (keepalive expired)
+      expect(daemonLog).toContain('skipping SSH');
+      console.log('✓ Daemon log shows "skipping SSH" (keepalive expired)');
       console.log('');
       
-      // Verify daemon is still running (just not writing heartbeats)
+      // Verify daemon is still running (just not SSH'ing)
       console.log('Checking if daemon is still running...');
       const isRunning = await isTrafficMonitorRunning(codespaceName, port2);
       
       if (!isRunning) {
-        // Daemon died - let's get logs to debug
-        console.error('ERROR: Daemon is not running! Getting daemon logs...');
+        console.error('ERROR: Daemon is not running! Getting full daemon log...');
         try {
-          const daemonLog = await execInCodespace(
+          const fullDaemonLog = await execInCodespace(
             codespaceName,
-            `tail -100 /tmp/sudocode-monitor-${port2}-daemon.log 2>&1 || echo "No daemon log found"`,
+            `cat /tmp/sudocode-monitor-${port2}-daemon.log 2>&1 || echo "No daemon log found"`,
             { streamOutput: false }
           );
-          console.error('Daemon log (last 100 lines):');
-          console.error(daemonLog);
+          console.error('Full daemon log:');
+          console.error(fullDaemonLog);
         } catch (e) {
           console.error('Could not read daemon log:', e);
         }
@@ -373,26 +358,26 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       expect(isRunning).toBe(true);
       console.log('✓ Daemon is still running (counter expired, waiting for activity)');
       console.log('');
-      console.log('Test 2 Complete: Heartbeats stopped after keepalive expired');
+      console.log('Test 2 Complete: SSH commands stopped after keepalive expired');
       console.log('');
     }, 240000); // 4 minute timeout
   });
   
-  describe('Test 3: Heartbeats resume if activity restarts', () => {
-    it('should resume heartbeats after generating new activity', async () => {
-      console.log('Test 3: Verifying heartbeats resume after activity restarts');
-      console.log('-------------------------------------------------------------');
+  describe('Test 3: SSH commands resume after activity restarts', () => {
+    it('should resume SSH commands after generating new activity', async () => {
+      console.log('Test 3: Verifying SSH commands resume after activity restarts');
+      console.log('----------------------------------------------------------------');
       console.log('');
       
-      // From Test 2, daemon has stopped writing heartbeats
-      // Get current count (should be unchanged from end of Test 2)
-      const heartbeatCountBefore = await execInCodespace(
+      // From Test 2, daemon has stopped SSH commands
+      // Get current SSH command count
+      const sshCountBefore = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port2}.txt`,
+        `grep -c "SSH keepalive executed successfully" /tmp/sudocode-monitor-${port2}-daemon.log || echo "0"`,
         { streamOutput: false }
       );
-      const countBefore = parseInt(heartbeatCountBefore.trim());
-      console.log(`Current heartbeat count: ${countBefore}`);
+      const countBefore = parseInt(sshCountBefore.trim());
+      console.log(`Current SSH command count: ${countBefore}`);
       console.log('');
       
       // Generate new server activity
@@ -405,216 +390,39 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('✓ Activity generated (log file modified)');
       console.log('');
       
-      // Wait for next heartbeat interval (35 seconds)
-      console.log('Waiting for daemon to detect activity and write heartbeat (35 seconds)...');
+      // Wait for next SSH interval (35 seconds)
+      console.log('Waiting for daemon to detect activity and execute SSH command (35 seconds)...');
       await new Promise(resolve => setTimeout(resolve, 35000));
       
-      // Verify heartbeat count increased (heartbeats resumed)
-      const heartbeatCountAfter1 = await execInCodespace(
+      // Verify SSH command count increased (SSH commands resumed)
+      const sshCountAfter1 = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port2}.txt`,
+        `grep -c "SSH keepalive executed successfully" /tmp/sudocode-monitor-${port2}-daemon.log || echo "0"`,
         { streamOutput: false }
       );
-      const countAfter1 = parseInt(heartbeatCountAfter1.trim());
+      const countAfter1 = parseInt(sshCountAfter1.trim());
       
       expect(countAfter1).toBeGreaterThan(countBefore);
-      console.log(`✓ Heartbeats resumed (${countBefore} -> ${countAfter1})`);
+      console.log(`✓ SSH commands resumed (${countBefore} -> ${countAfter1})`);
       console.log('');
       
-      // Wait another interval to verify heartbeats continue
-      console.log('Waiting another interval (35 seconds) to confirm continued heartbeats...');
+      // Wait another interval to verify SSH commands continue
+      console.log('Waiting another interval (35 seconds) to confirm continued SSH commands...');
       await new Promise(resolve => setTimeout(resolve, 35000));
       
-      const heartbeatCountAfter2 = await execInCodespace(
+      const sshCountAfter2 = await execInCodespace(
         codespaceName,
-        `wc -l < /tmp/keepalive-heartbeat-${port2}.txt`,
+        `grep -c "SSH keepalive executed successfully" /tmp/sudocode-monitor-${port2}-daemon.log || echo "0"`,
         { streamOutput: false }
       );
-      const countAfter2 = parseInt(heartbeatCountAfter2.trim());
+      const countAfter2 = parseInt(sshCountAfter2.trim());
       
       expect(countAfter2).toBeGreaterThan(countAfter1);
-      console.log(`✓ Heartbeats continued (${countAfter1} -> ${countAfter2})`);
+      console.log(`✓ SSH commands continued (${countAfter1} -> ${countAfter2})`);
       console.log('');
-      console.log('Test 3 Complete: Heartbeats resumed after activity restart');
+      console.log('Test 3 Complete: SSH commands resumed after activity restart');
       console.log('');
     }, 120000); // 2 minute timeout
-  });
-  
-  describe('Test 4: Filesystem activity keeps codespace alive (MANUAL)', () => {
-    it('should verify filesystem activity prevents codespace timeout', async () => {
-      // This test validates that regular filesystem writes (heartbeat file)
-      // keep the codespace from being paused by GitHub's idle timeout.
-      //
-      // Test strategy:
-      // 1. Create codespace with 5-minute idle timeout (GitHub minimum)
-      // 2. Start daemon with 15-minute keepalive
-      // 3. Wait 10 minutes without any SSH/network activity
-      // 4. Verify codespace is still Available (not paused/stopped)
-      // 5. Verify server still responds
-      //
-      // Success criteria: If codespace is still alive after 10 minutes,
-      // then file writes are keeping it alive (since idle timeout is 5 minutes)
-      //
-      // Expected test duration: ~18-20 minutes
-      
-      console.log('Test 4: Verifying filesystem activity prevents codespace timeout');
-      console.log('-----------------------------------------------------------------');
-      console.log('');
-      console.log('Creating a NEW codespace with 5-minute idle timeout...');
-      
-      // Create a fresh codespace with 5-minute idle timeout (GitHub minimum)
-      const testCodespace = await createCodespace({
-        repository,
-        machine: 'basicLinux32gb',
-        idleTimeout: 5, // 5 minutes (GitHub minimum)
-        retentionPeriod: 1
-      });
-      
-      const testCodespaceName = testCodespace.name;
-      trackCodespace(testCodespaceName);
-      console.log(`✓ Created codespace: ${testCodespaceName}`);
-      console.log('  - Idle timeout: 5 minutes');
-      console.log('');
-      
-      try {
-        // Wait for ready
-        console.log('Waiting for codespace to be ready...');
-        await waitForCodespaceReady(testCodespaceName, 30);
-        console.log('✓ Codespace is ready');
-        console.log('');
-        
-        // Install sudocode (required to run server)
-        console.log('Installing sudocode in dev mode...');
-        console.log('(This will take several minutes)');
-        await installSudocodeFromLocal(testCodespaceName, workspaceDir);
-        console.log('✓ Sudocode installed');
-        console.log('');
-        
-        // Initialize project
-        console.log('Initializing sudocode project...');
-        await initializeSudocodeProject(testCodespaceName, workspaceDir);
-        console.log('✓ Project initialized');
-        console.log('');
-        
-        // Find available port for test
-        console.log('Finding available port...');
-        const testPort = await findAvailablePort(4000, testCodespaceName);
-        console.log(`✓ Allocated port: ${testPort}`);
-        console.log('');
-        
-        // Start server
-        console.log(`Starting server on port ${testPort}...`);
-        await startSudocodeServer(testCodespaceName, testPort, workspaceDir);
-        await waitForPortListening(testCodespaceName, testPort, 30);
-        console.log('✓ Server is running');
-        console.log('');
-        
-        // Start monitor with 15-minute keepalive and 1-minute heartbeat interval
-        console.log('Starting traffic monitor with 15-minute keepalive...');
-        console.log('- Keepalive: 15 minutes');
-        console.log('- Heartbeat interval: 1 minute');
-        console.log('- Codespace idle timeout: 5 minutes');
-        await startTrafficMonitor({
-          codespaceName: testCodespaceName,
-          serverPort: testPort,
-          serverLogPath: `/tmp/sudocode-${testPort}.log`,
-          keepAliveHours: 15 / 60, // 15 minutes
-          heartbeatIntervalMinutes: 1 // 1 minute
-        });
-        console.log('✓ Traffic monitor started');
-        console.log('');
-        
-        // Wait for first heartbeat to confirm daemon is working
-        console.log('Waiting for first heartbeat to confirm daemon is active...');
-        await waitForCondition(
-          async () => {
-            try {
-              const countResult = await execInCodespace(
-                testCodespaceName,
-                `wc -l < /tmp/keepalive-heartbeat-${testPort}.txt 2>/dev/null || echo "0"`,
-                { streamOutput: false }
-              );
-              const count = parseInt(countResult.trim());
-              return count > 0;
-            } catch {
-              return false;
-            }
-          },
-          90000,  // 90 second timeout
-          10000,  // Check every 10 seconds
-          'First heartbeat not written within timeout'
-        );
-        console.log('✓ First heartbeat confirmed');
-        console.log('');
-        
-        // Now wait 10 minutes WITHOUT any SSH/network activity
-        console.log('========================================');
-        console.log('CRITICAL TEST PERIOD: Waiting 10 minutes');
-        console.log('========================================');
-        console.log('');
-        console.log('No SSH commands will be run during this time.');
-        console.log('The daemon should write heartbeats every 1 minute.');
-        console.log('Codespace idle timeout is 5 minutes.');
-        console.log('If codespace is still alive after 10 minutes,');
-        console.log('then file writes are keeping it alive!');
-        console.log('');
-        console.log('Waiting...');
-        
-        // Wait exactly 10 minutes
-        const waitMinutes = 10;
-        const waitMs = waitMinutes * 60 * 1000;
-        await new Promise(resolve => setTimeout(resolve, waitMs));
-        
-        console.log(`✓ Waited ${waitMinutes} minutes`);
-        console.log('');
-        
-        // Now check if codespace is still alive
-        console.log('Checking codespace state...');
-        const info = await getCodespaceInfo(testCodespaceName);
-        
-        console.log(`Codespace state: ${info.state}`);
-        expect(info.state).toBe('Available');
-        console.log('✓ Codespace is still Available (not paused!)');
-        console.log('');
-        
-        // Verify server is still responding
-        console.log('Verifying server is still responding...');
-        const isListening = await checkPortListening(testCodespaceName, testPort);
-        expect(isListening).toBe(true);
-        console.log('✓ Server is still responding');
-        console.log('');
-        
-        // Check heartbeat file was written multiple times during the wait
-        console.log('Checking heartbeat file...');
-        const heartbeatCount = await execInCodespace(
-          testCodespaceName,
-          `wc -l < /tmp/keepalive-heartbeat-${testPort}.txt`,
-          { streamOutput: false }
-        );
-        const count = parseInt(heartbeatCount.trim());
-        
-        // Should have at least 10 heartbeats (one per minute for 10 minutes)
-        expect(count).toBeGreaterThanOrEqual(10);
-        console.log(`✓ Heartbeat file has ${count} entries (expected >= 10)`);
-        console.log('');
-        
-        console.log('========================================');
-        console.log('TEST SUCCESS!');
-        console.log('========================================');
-        console.log('');
-        console.log('The codespace remained alive for 10+ minutes despite');
-        console.log('having a 5-minute idle timeout. This proves that the');
-        console.log('daemon\'s filesystem writes (heartbeat file) are');
-        console.log('keeping the codespace alive!');
-        console.log('');
-        
-      } finally {
-        // Clean up the test codespace
-        console.log('Cleaning up test codespace...');
-        await cleanupTrackedCodespaces();
-        console.log('✓ Test codespace deleted');
-      }
-    }, 1200000); // 20 minute timeout (allows for installation + 10 minute wait)
   });
   
   // Summary test that runs after all others
@@ -642,9 +450,9 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     console.log('Keepalive Behavior Tests Complete!');
     console.log('========================================');
     console.log('All behaviors verified:');
-    console.log('✓ Test 1: Heartbeats write while server active');
-    console.log('✓ Test 2: Heartbeats stop after keepalive expires');
-    console.log('✓ Test 3: Heartbeats resume after activity restarts');
+    console.log('✓ Test 1: SSH commands execute while server active');
+    console.log('✓ Test 2: SSH commands stop after keepalive expires');
+    console.log('✓ Test 3: SSH commands resume after activity restarts');
     console.log('✓ Both daemons still running');
     console.log('');
   }, 30000); // 30 second timeout

@@ -81,6 +81,6 @@ export interface TrafficMonitorOptions {
   /** Keepalive duration in hours */
   keepAliveHours: number;
   
-  /** Heartbeat interval in minutes (default: 5) */
-  heartbeatIntervalMinutes?: number;
+  /** SSH keepalive interval in minutes (default: 0.5 = 30 seconds) */
+  sshIntervalMinutes?: number;
 }
