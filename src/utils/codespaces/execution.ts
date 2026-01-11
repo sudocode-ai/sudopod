@@ -15,32 +15,41 @@ import { exec } from 'child_process';
 import type { ExecOptions } from './types.js';
 
 /**
- * Escape shell argument for safe inclusion in command string
+ * Escape command for bash -l -c execution
  * 
- * This properly escapes double quotes and backslashes to prevent
- * shell injection when passing commands via SSH.
+ * This properly escapes single quotes for the login shell pattern:
+ * gh codespace ssh -- "bash -l -c 'command'"
  * 
- * @param arg - Argument to escape
- * @returns Escaped argument safe for shell execution
+ * Single quotes inside the command need to be escaped as '\''
+ * (end quote, escaped quote, start quote).
+ * 
+ * @param command - Command to escape
+ * @returns Escaped command safe for bash -l -c execution
  * 
  * @example
  * ```typescript
- * escapeShellArg('echo "hello"') // Returns: echo \\"hello\\"
- * escapeShellArg('path\\to\\file') // Returns: path\\\\to\\\\file
+ * escapeForLoginShell("echo 'hello'") // Returns: echo '\''hello'\''
+ * escapeForLoginShell('echo "world"') // Returns: echo "world" (double quotes are safe)
  * ```
  */
-function escapeShellArg(arg: string): string {
-  return arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+function escapeForLoginShell(command: string): string {
+  return command.replace(/'/g, "'\\''");
 }
 
 /**
- * Execute a command in the codespace via SSH
+ * Execute a command in the codespace via SSH using login shell
  * 
- * Uses `gh codespace ssh` to execute commands remotely. Supports:
- * - Working directory changes via `cwd` option
+ * Uses `gh codespace ssh` with `bash -l -c` to execute commands remotely.
+ * The login shell pattern ensures:
+ * - Commands run from workspace directory (/workspaces/<repo>) by default
+ * - All environment variables are properly set (PATH includes installed tools)
+ * - Consistent execution environment for all commands
+ * 
+ * Features:
+ * - Optional working directory override via `cwd` option
  * - Configurable timeout
  * - Real-time output streaming
- * - Proper shell argument escaping
+ * - Proper single-quote escaping for login shell
  * 
  * @param name - Codespace name (from GitHub API)
  * @param command - Command to execute (should be from trusted source)
@@ -50,25 +59,24 @@ function escapeShellArg(arg: string): string {
  * 
  * @example
  * ```typescript
- * // Simple command
+ * // Simple command (runs in /workspaces/<repo> by default)
  * const output = await execInCodespace(name, 'pwd');
- * console.log('Current directory:', output);
+ * console.log('Current directory:', output); // /workspaces/<repo>
  * 
- * // With working directory
+ * // Install packages (runs in workspace root automatically)
  * await execInCodespace(name, 'npm install', { 
- *   cwd: '/workspaces/myrepo',
  *   timeout: 300000 // 5 minutes
  * });
  * 
- * // Silent execution (no streaming)
- * const result = await execInCodespace(name, 'cat package.json', { 
+ * // Override working directory for specific cases
+ * await execInCodespace(name, 'ls -la', { 
+ *   cwd: '/tmp',
  *   streamOutput: false 
  * });
  * 
- * // With custom timeout
+ * // Long-running build
  * await execInCodespace(name, 'npm run build', {
  *   timeout: 600000, // 10 minutes
- *   cwd: '/workspaces/myrepo',
  *   streamOutput: true
  * });
  * ```
@@ -81,21 +89,35 @@ export async function execInCodespace(
   const {
     timeout = 120000, // 2 minutes default
     cwd,
-    streamOutput = true
+    streamOutput = true,
+    background = false
   } = options;
 
-  // Wrap command to cd to correct directory if specified
+  // If cwd is specified, wrap command to cd first
   const wrappedCommand = cwd
     ? `cd ${cwd} && ${command}`
     : command;
 
-  // Properly escape the command for SSH execution
-  const escapedCommand = escapeShellArg(wrappedCommand);
-  const sshCommand = `gh codespace ssh --codespace ${name} -- "${escapedCommand}"`;
+  // Escape command for bash -l -c execution (handle single quotes)
+  const escapedCommand = escapeForLoginShell(wrappedCommand);
+  
+  // Use login shell pattern for proper environment setup
+  // For background processes, add extra & outside the bash -l -c command
+  // This is needed for nohup processes to properly persist after SSH disconnect
+  // Pattern: gh codespace ssh -- "bash -l -c 'command &' &"
+  const sshCommand = background
+    ? `gh codespace ssh --codespace ${name} -- "bash -l -c '${escapedCommand}' &"`
+    : `gh codespace ssh --codespace ${name} -- "bash -l -c '${escapedCommand}'"`;
 
   return new Promise((resolve, reject) => {
     const child = exec(sshCommand, { timeout }, (error, stdout, stderr) => {
-      if (error) {
+      // For background processes, the outer & causes immediate return
+      // We only care that the SSH command itself succeeded, not the backgrounded process
+      if (background) {
+        // For background processes, resolve immediately
+        // The process will continue running after SSH disconnects
+        resolve(stdout);
+      } else if (error) {
         reject(new Error(
           `Failed to execute in codespace ${name}: ${command}\n${error.message}\n${stderr}`
         ));

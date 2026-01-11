@@ -24,16 +24,16 @@ import { execInCodespace } from './execution.js';
  * - Installs it to the user's home directory
  * - Makes it available in the PATH
  * 
+ * Uses login shell (bash -l -c) for proper environment setup.
  * Timeout is set to 5 minutes to accommodate slow network connections.
  * 
  * @param name - Codespace name
- * @param workspaceDir - Workspace directory path (unused but kept for consistency)
  * @throws Error if installation fails or times out
  * 
  * @example
  * ```typescript
  * // Install Claude Code in a codespace
- * await installClaudeCode('mycodespace-abc123', '/workspaces/myrepo');
+ * await installClaudeCode('mycodespace-abc123');
  * 
  * // Verify installation
  * const version = await execInCodespace('mycodespace-abc123', 'claude --version');
@@ -41,8 +41,7 @@ import { execInCodespace } from './execution.js';
  * ```
  */
 export async function installClaudeCode(
-  name: string,
-  workspaceDir: string
+  name: string
 ): Promise<void> {
   await execInCodespace(
     name,
@@ -64,17 +63,17 @@ export async function installClaudeCode(
  * This is the standard installation method for production use.
  * For development/testing, use `installSudocodeFromLocal()` instead.
  * 
+ * Uses login shell (bash -l -c) for proper environment setup.
  * Timeout is set to 5 minutes to accommodate npm registry download times
  * and dependency installation.
  * 
  * @param name - Codespace name
- * @param workspaceDir - Workspace directory path (unused but kept for consistency)
  * @throws Error if npm installation fails or times out
  * 
  * @example
  * ```typescript
  * // Install latest version from npm
- * await installSudocodeGlobally('mycodespace-abc123', '/workspaces/myrepo');
+ * await installSudocodeGlobally('mycodespace-abc123');
  * 
  * // Verify installation
  * const version = await execInCodespace('mycodespace-abc123', 'sudocode --version');
@@ -82,8 +81,7 @@ export async function installClaudeCode(
  * ```
  */
 export async function installSudocodeGlobally(
-  name: string,
-  workspaceDir: string
+  name: string
 ): Promise<void> {
   await execInCodespace(
     name,
@@ -98,7 +96,7 @@ export async function installSudocodeGlobally(
 /**
  * Install sudocode from local repository (dev mode)
  * 
- * Builds and links sudocode packages from a local repository clone.
+ * Builds and links sudocode packages from the local repository in the workspace.
  * This is used for development and testing with unreleased changes.
  * 
  * The installation process:
@@ -106,27 +104,25 @@ export async function installSudocodeGlobally(
  * 2. Runs `npm run build` to compile TypeScript
  * 3. Runs `npm run link` to make packages globally available via symlinks
  * 
+ * Uses login shell (bash -l -c) which runs from the workspace directory by default.
+ * 
  * Requirements:
- * - The repository must be cloned at `workspaceDir`
+ * - The repository must be cloned in the workspace
  * - The repository must have build and link scripts in package.json
  * - Node.js and npm must be available in the codespace
  * 
- * Timeout is set to 10 minutes to accommodate:
+ * Timeout is set to 15 minutes to accommodate:
  * - Dependency installation (can be large)
  * - TypeScript compilation
  * - Package linking
  * 
  * @param name - Codespace name
- * @param workspaceDir - Workspace directory path where sudocode repo is cloned
  * @throws Error if build or link fails, or if operations timeout
  * 
  * @example
  * ```typescript
- * // Install from local repository
- * await installSudocodeFromLocal(
- *   'mycodespace-abc123',
- *   '/workspaces/sudocode'
- * );
+ * // Install from local repository (runs in /workspaces/sudocode automatically)
+ * await installSudocodeFromLocal('mycodespace-abc123');
  * 
  * // Verify linked installation
  * const whichCli = await execInCodespace(
@@ -139,12 +135,11 @@ export async function installSudocodeGlobally(
  * ```
  */
 export async function installSudocodeFromLocal(
-  name: string,
-  workspaceDir: string
+  name: string
 ): Promise<void> {
-  // Chain commands: cd to workspace, install deps, build, and link
+  // Chain commands: install deps, build, and link
+  // Login shell runs from workspace directory by default
   const commands = [
-    `cd ${workspaceDir}`,
     'npm install',
     'npm run build',
     'npm run link'
@@ -173,44 +168,42 @@ export async function installSudocodeFromLocal(
  * This idempotent behavior ensures the function can be called multiple times
  * without errors or duplicate initialization.
  * 
+ * Uses login shell (bash -l -c) which runs from the workspace directory by default.
+ * 
  * Prerequisites:
  * - sudocode CLI must be installed (either globally or locally)
  * - Workspace directory must exist
  * 
  * @param name - Codespace name
- * @param workspaceDir - Workspace directory path to initialize
  * @throws Error if initialization fails
  * 
  * @example
  * ```typescript
- * // Initialize project
- * await initializeSudocodeProject(
- *   'mycodespace-abc123',
- *   '/workspaces/myrepo'
- * );
+ * // Initialize project (runs in /workspaces/<repo> automatically)
+ * await initializeSudocodeProject('mycodespace-abc123');
  * 
  * // Verify initialization
  * const configExists = await execInCodespace(
  *   'mycodespace-abc123',
- *   'test -d /workspaces/myrepo/.sudocode && echo "exists"',
+ *   'test -d .sudocode && echo "exists"',
  *   { streamOutput: false }
  * );
  * console.log('Config directory:', configExists); // "exists"
  * 
  * // Safe to call multiple times (idempotent)
- * await initializeSudocodeProject('mycodespace-abc123', '/workspaces/myrepo');
- * await initializeSudocodeProject('mycodespace-abc123', '/workspaces/myrepo');
+ * await initializeSudocodeProject('mycodespace-abc123');
+ * await initializeSudocodeProject('mycodespace-abc123');
  * // No errors, initialization only happens once
  * ```
  */
 export async function initializeSudocodeProject(
-  name: string,
-  workspaceDir: string
+  name: string
 ): Promise<void> {
   // Check if .sudocode directory already exists
+  // Login shell runs from workspace directory, so use relative path
   const exists = await execInCodespace(
     name,
-    `test -d ${workspaceDir}/.sudocode && echo "1" || echo "0"`,
+    `test -d .sudocode && echo "1" || echo "0"`,
     { streamOutput: false, timeout: 5000 }
   );
 
@@ -218,7 +211,7 @@ export async function initializeSudocodeProject(
   if (exists.trim() === '0') {
     await execInCodespace(
       name,
-      `cd ${workspaceDir} && sudocode init`,
+      'sudocode init',
       { 
         timeout: 30000, // 30 seconds (init is usually fast)
         streamOutput: true

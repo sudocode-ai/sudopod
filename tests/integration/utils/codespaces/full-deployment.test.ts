@@ -64,7 +64,6 @@ describe('Full Codespace Deployment (Integration)', () => {
   let codespaceName: string;
   const repository = 'sudocode-ai/sudocode';
   const port = 3000;
-  const workspaceDir = '/workspaces/sudocode';
   
   // Verify prerequisites before running tests
   beforeAll(async () => {
@@ -113,7 +112,7 @@ describe('Full Codespace Deployment (Integration)', () => {
   
   it('should install Claude Code', async () => {
     console.log('Step 2: Installing Claude Code...');
-    await installClaudeCode(codespaceName, workspaceDir);
+    await installClaudeCode(codespaceName);
     
     // Verify installation
     console.log('Verifying Claude Code installation...');
@@ -132,7 +131,7 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('Step 3: Installing sudocode in dev mode...');
     console.log('This will: npm install, build, and link packages');
     
-    await installSudocodeFromLocal(codespaceName, workspaceDir);
+    await installSudocodeFromLocal(codespaceName);
     
     // Verify CLI is available
     console.log('Verifying sudocode CLI installation...');
@@ -160,13 +159,13 @@ describe('Full Codespace Deployment (Integration)', () => {
   
   it('should initialize sudocode project', async () => {
     console.log('Step 4: Initializing sudocode project...');
-    await initializeSudocodeProject(codespaceName, workspaceDir);
+    await initializeSudocodeProject(codespaceName);
     
     // Verify .sudocode directory exists
     console.log('Verifying .sudocode directory...');
     const result = await execInCodespace(
       codespaceName,
-      `test -d ${workspaceDir}/.sudocode && echo "exists"`,
+      'test -d .sudocode && echo "exists"',
       { streamOutput: false }
     );
     
@@ -179,7 +178,7 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('Step 5: Starting sudocode server...');
     console.log(`Port: ${port}`);
     
-    await startSudocodeServer(codespaceName, port, workspaceDir);
+    await startSudocodeServer(codespaceName, port);
     
     // Wait for port to be listening
     console.log('Waiting for server to be ready...');

@@ -50,7 +50,6 @@ import {
 describe('Dev Mode Installation (Integration)', () => {
   let codespaceName: string;
   const repository = 'sudocode-ai/sudocode';
-  const workspaceDir = '/workspaces/sudocode';
   
   // Verify prerequisites before running tests
   beforeAll(async () => {
@@ -85,7 +84,7 @@ describe('Dev Mode Installation (Integration)', () => {
   
   it('should build and link sudocode from local repository', async () => {
     console.log('Installing sudocode from local repository...');
-    await installSudocodeFromLocal(codespaceName, workspaceDir);
+    await installSudocodeFromLocal(codespaceName);
     
     console.log('Verifying CLI is available globally...');
     const cliVersion = await execInCodespace(
@@ -117,12 +116,12 @@ describe('Dev Mode Installation (Integration)', () => {
   
   it('should initialize project with local sudocode', async () => {
     console.log('Initializing sudocode project...');
-    await initializeSudocodeProject(codespaceName, workspaceDir);
+    await initializeSudocodeProject(codespaceName);
     
     console.log('Verifying .sudocode directory exists...');
     const dirExists = await execInCodespace(
       codespaceName,
-      `test -d ${workspaceDir}/.sudocode && echo "exists"`,
+      'test -d .sudocode && echo "exists"',
       { streamOutput: false }
     );
     expect(dirExists.trim()).toBe('exists');
@@ -131,7 +130,7 @@ describe('Dev Mode Installation (Integration)', () => {
     console.log('Verifying .sudocode directory structure...');
     const structure = await execInCodespace(
       codespaceName,
-      `ls -la ${workspaceDir}/.sudocode`,
+      'ls -la .sudocode',
       { streamOutput: false }
     );
     

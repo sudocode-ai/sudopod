@@ -63,6 +63,17 @@ export interface ExecOptions {
   
   /** Stream output in real-time (default: true) */
   streamOutput?: boolean;
+  
+  /** 
+   * Run command in background with proper SSH backgrounding (default: false)
+   * 
+   * When true, adds an extra & outside the bash -l -c command to ensure
+   * the process properly backgrounds and persists after SSH disconnects.
+   * This is needed for nohup processes.
+   * 
+   * Pattern: gh codespace ssh -- "bash -l -c 'command &' &"
+   */
+  background?: boolean;
 }
 
 /**

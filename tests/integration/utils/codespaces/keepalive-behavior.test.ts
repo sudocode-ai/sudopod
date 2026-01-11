@@ -60,7 +60,6 @@ import {
 describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
   let codespaceName: string;
   const repository = 'sudocode-ai/sudocode';
-  const workspaceDir = '/workspaces/sudocode';
   
   // Dynamic port allocation starting from 4000 to avoid conflicts with sudocode (port 3000)
   let port1: number;
@@ -131,13 +130,13 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     // Install sudocode in dev mode
     console.log('Installing sudocode in dev mode...');
     console.log('(This will take several minutes)');
-    await installSudocodeFromLocal(codespaceName, workspaceDir);
+    await installSudocodeFromLocal(codespaceName);
     console.log('✓ Sudocode installed');
     console.log('');
     
     // Initialize project
     console.log('Initializing sudocode project...');
-    await initializeSudocodeProject(codespaceName, workspaceDir);
+    await initializeSudocodeProject(codespaceName);
     console.log('✓ Project initialized');
     console.log('');
     
@@ -167,7 +166,7 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       
       // Start server on port1
       console.log(`Starting server on port ${port1}...`);
-      await startSudocodeServer(codespaceName, port1, workspaceDir);
+      await startSudocodeServer(codespaceName, port1);
       await waitForPortListening(codespaceName, port1, 30);
       console.log('✓ Server is running');
       console.log('');
@@ -264,7 +263,7 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       
       // Start server on port2
       console.log(`Starting server on port ${port2}...`);
-      await startSudocodeServer(codespaceName, port2, workspaceDir);
+      await startSudocodeServer(codespaceName, port2);
       await waitForPortListening(codespaceName, port2, 30);
       console.log('✓ Server is running');
       console.log('');
