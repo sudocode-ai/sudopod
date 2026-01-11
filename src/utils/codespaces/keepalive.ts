@@ -234,10 +234,13 @@ export async function startTrafficMonitor(
   // 4. Start daemon in background using LOGIN SHELL (bash -l) to access gh CLI
   // The daemon script itself has #!/bin/bash -l shebang, but we also need to
   // start it in a login shell to ensure gh CLI is available
+  // 
+  // IMPORTANT: Use background: true option to ensure process persists after SSH disconnect
+  // Note: Don't redirect nohup output - the script handles its own logging
   await execInCodespace(
     codespaceName,
-    `bash -l -c 'nohup ${remoteScriptPath} > /tmp/sudocode-monitor-${serverPort}-daemon.log 2>&1 </dev/null & sleep 0.1'`,
-    { streamOutput: false, timeout: 10000 }
+    `nohup ${remoteScriptPath} >/dev/null 2>&1 </dev/null &`,
+    { streamOutput: false, timeout: 10000, background: true }
   );
   
   // 5. Verify daemon is running (check for PID file)
@@ -331,15 +334,17 @@ export async function isTrafficMonitorRunning(
   try {
     const pidFile = `/tmp/sudocode-monitor-${serverPort}.pid`;
     
-    // Check if PID file exists AND process is running
+    // Check if PID file exists and contains a valid PID
+    // Then check if that process is running
+    // Use 'if' statement for clearer logic than chained && ||
     const result = await execInCodespace(
       codespaceName,
-      `[ -f ${pidFile} ] && ps -p $(cat ${pidFile}) > /dev/null && echo "1" || echo "0"`,
+      `if [ -f ${pidFile} ]; then pid=$(cat ${pidFile}); if ps -p "$pid" >/dev/null 2>&1; then echo "1"; else echo "0"; fi; else echo "0"; fi`,
       { streamOutput: false }
     );
     
     return result.trim() === '1';
-  } catch {
+  } catch (error) {
     // If command fails (e.g., codespace unreachable), assume not running
     return false;
   }

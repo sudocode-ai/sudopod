@@ -102,9 +102,10 @@ export async function execInCodespace(
   const escapedCommand = escapeForLoginShell(wrappedCommand);
   
   // Use login shell pattern for proper environment setup
-  // For background processes, add extra & outside the bash -l -c command
-  // This is needed for nohup processes to properly persist after SSH disconnect
-  // Pattern: gh codespace ssh -- "bash -l -c 'command &' &"
+  // For background processes, we rely on the command itself to have & for backgrounding
+  // The outer & after the quotes ensures the SSH command returns immediately
+  // Pattern: gh codespace ssh -- "bash -l -c 'nohup command ... &' &"
+  // Note: The command passed in should already contain the inner & for nohup
   const sshCommand = background
     ? `gh codespace ssh --codespace ${name} -- "bash -l -c '${escapedCommand}' &"`
     : `gh codespace ssh --codespace ${name} -- "bash -l -c '${escapedCommand}'"`;
