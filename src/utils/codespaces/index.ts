@@ -11,7 +11,7 @@ export type {
   CreateCodespaceOptions,
   CodespaceInfo,
   ExecOptions,
-  TrafficMonitorOptions
+  IdleTimeoutDaemonOptions
 } from './types.js';
 
 // Management primitives
@@ -52,9 +52,9 @@ export {
   startSudocodeServer
 } from './server.js';
 
-// Keepalive primitives
+// Idle timeout daemon primitives
 export {
-  startTrafficMonitor,
-  stopTrafficMonitor,
-  isTrafficMonitorRunning
+  startIdleTimeoutDaemon,
+  stopIdleTimeoutDaemon,
+  isIdleTimeoutDaemonRunning
 } from './keepalive.js';

@@ -13,7 +13,7 @@
  * 5. Initialize sudocode project
  * 6. Start sudocode server
  * 7. Forward port and get public URL
- * 8. Start traffic monitor daemon
+ * 8. Start idle timeout daemon
  * 9. Verify SSH keepalive commands are executing
  * 10. Clean up codespace (always runs, even on failure)
  *
@@ -50,8 +50,8 @@ import {
   waitForPortListening,
   forwardPort,
   getCodespacePortUrl,
-  startTrafficMonitor,
-  isTrafficMonitorRunning,
+  startIdleTimeoutDaemon,
+  isIdleTimeoutDaemonRunning,
   type CodespaceInfo
 } from '../../../../src/utils/codespaces/index.js';
 import {
@@ -217,18 +217,18 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('');
   }, 60000); // 1 minute timeout
 
-  it('should start traffic monitor daemon', async () => {
-    console.log('Step 7: Starting traffic monitor daemon...');
+  it('should start idle timeout daemon', async () => {
+    console.log('Step 7: Starting idle timeout daemon...');
 
-    await startTrafficMonitor({
+    await startIdleTimeoutDaemon({
       codespaceName,
       serverPort: port,
       serverLogPath: `/tmp/sudocode-${port}.log`,
-      keepAliveHours: 1, // Short duration for testing
+      idleTimeoutHours: 1, // Short duration for testing
       sshIntervalMinutes: 0.5 // Frequent SSH keepalive (30 seconds) for testing
     });
 
-    console.log('✓ Traffic monitor daemon started');
+    console.log('✓ Idle timeout daemon started');
 
     // Wait a bit for daemon to initialize
     console.log('Waiting for daemon to initialize...');
@@ -285,7 +285,7 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('');
   }, 60000); // 60 second timeout (to allow for SSH interval)
 
-  // Note: Final daemon process check removed - tested in keepalive-behavior.test.ts
+  // Note: Final daemon process check removed - tested in idle-timeout-behavior.test.ts
   // The daemon is working (SSH commands execute), but checking process status
   // through nested bash shells is unreliable. See issue for details.
   
@@ -301,7 +301,7 @@ describe('Full Codespace Deployment (Integration)', () => {
     console.log('✓ Project initialized');
     console.log('✓ Server running on port', port);
     console.log('✓ Port forwarded with public URL');
-    console.log('✓ Traffic monitor daemon started');
+    console.log('✓ Idle timeout daemon started');
     console.log('✓ SSH keepalive commands executing');
     console.log('');
   });

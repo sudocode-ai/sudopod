@@ -1,13 +1,13 @@
 /**
- * Integration test: Traffic Monitor Keepalive Behavior
+ * Integration test: Idle Timeout Daemon Behavior
  *
- * This test validates that the traffic monitoring daemon actually keeps
+ * This test validates that the idle timeout daemon actually keeps
  * codespaces alive by testing the REAL EFFECTS, not implementation details.
  *
  * Test Scenarios:
- * 1. Codespace stays alive when keepalive is active (despite idle timeout)
- * 2. Codespace shuts down when keepalive expires and no activity
- * 3. Codespace is saved by reactivating keepalive before idle timeout
+ * 1. Codespace stays alive when daemon is active (despite idle timeout)
+ * 2. Codespace shuts down when daemon expires and no activity
+ * 3. Codespace is saved by reactivating daemon before idle timeout
  *
  * Uses 5-minute idle timeout for reasonable test duration while validating
  * the actual behavior we care about: keeping codespaces alive.
@@ -38,7 +38,7 @@ import {
   createCodespace,
   waitForCodespaceReady,
   execInCodespace,
-  startTrafficMonitor,
+  startIdleTimeoutDaemon,
   getCodespaceInfo,
   type CodespaceInfo
 } from '../../../../src/utils/codespaces/index.js';
@@ -49,7 +49,7 @@ import {
   markTestFailed
 } from './helpers.js';
 
-describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
+describe('Idle Timeout Daemon Behavior (Integration)', () => {
   const repository = 'sudocode-ai/sudocode';
   const IDLE_TIMEOUT_MINUTES = 5; // GitHub's minimum idle timeout
 
@@ -76,12 +76,12 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     console.log('✓ Cleanup complete');
   }, 60000);
 
-  describe('Test 1: Codespace stays alive with active keepalive', () => {
+  describe('Test 1: Codespace stays alive with active daemon', () => {
     let codespaceName: string;
 
     it('should create codespace with 5-minute idle timeout', async () => {
       console.log('========================================');
-      console.log('Test 1: Codespace Stays Alive with Keepalive');
+      console.log('Test 1: Codespace Stays Alive with Active Daemon');
       console.log('========================================');
       console.log('');
 
@@ -108,9 +108,9 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('');
     }, 180000); // 3 minute timeout
 
-    it('should start daemon with active keepalive (no server needed)', async () => {
-      console.log('Starting traffic monitor daemon...');
-      console.log('- Keepalive: 10 minutes (longer than idle timeout)');
+    it('should start daemon with active idle timeout (no server needed)', async () => {
+      console.log('Starting idle timeout daemon...');
+      console.log('- Idle timeout: 10 minutes (longer than GitHub idle timeout)');
       console.log('- SSH interval: 1 minute');
       console.log('- No server running (daemon will create dummy log activity)');
 
@@ -121,22 +121,22 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         { streamOutput: false }
       );
 
-      await startTrafficMonitor({
+      await startIdleTimeoutDaemon({
         codespaceName,
         serverPort: 9999, // Dummy port (no server)
         serverLogPath: '/tmp/test-keepalive.log',
-        keepAliveHours: 10 / 60, // 10 minutes
+        idleTimeoutHours: 10 / 60, // 10 minutes
         sshIntervalMinutes: 1 // 1 minute intervals
       });
 
-      console.log('✓ Traffic monitor started');
+      console.log('✓ Idle timeout daemon started');
       console.log('');
     }, 60000); // 1 minute timeout
 
     it('should keep codespace alive past idle timeout with NO manual activity', async () => {
       console.log('Waiting 7 minutes (past 5-minute idle timeout)...');
       console.log('- NO manual SSH or commands will be run');
-      console.log('- Only the daemons SSH keepalive commands');
+      console.log('- Only the daemon\'s SSH keepalive commands');
       console.log('- Codespace should stay alive thanks to daemon');
       console.log('');
 
@@ -156,12 +156,12 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
     }, 500000); // 8 minute timeout (+ buffer)
   });
 
-  describe('Test 2: Codespace shuts down when keepalive expires', () => {
+  describe('Test 2: Codespace shuts down when idle timeout expires', () => {
     let codespaceName: string;
 
     it('should create codespace with 5-minute idle timeout', async () => {
       console.log('========================================');
-      console.log('Test 2: Codespace Shuts Down After Keepalive Expires');
+      console.log('Test 2: Codespace Shuts Down After Idle Timeout Expires');
       console.log('========================================');
       console.log('');
 
@@ -183,9 +183,9 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('');
     }, 180000);
 
-    it('should start daemon with SHORT keepalive (expires before idle timeout)', async () => {
-      console.log('Starting traffic monitor with SHORT keepalive...');
-      console.log('- Keepalive: 2 minutes (expires BEFORE 5-minute idle timeout)');
+    it('should start daemon with SHORT idle timeout (expires before GitHub idle timeout)', async () => {
+      console.log('Starting idle timeout daemon with SHORT timeout...');
+      console.log('- Idle timeout: 2 minutes (expires BEFORE 5-minute GitHub idle timeout)');
       console.log('- SSH interval: 30 seconds');
 
       await execInCodespace(
@@ -194,15 +194,15 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         { streamOutput: false }
       );
 
-      await startTrafficMonitor({
+      await startIdleTimeoutDaemon({
         codespaceName,
         serverPort: 9998,
         serverLogPath: '/tmp/test-keepalive2.log',
-        keepAliveHours: 2 / 60, // 2 minutes
+        idleTimeoutHours: 2 / 60, // 2 minutes
         sshIntervalMinutes: 0.5
       });
 
-      console.log('✓ Traffic monitor started');
+      console.log('✓ Idle timeout daemon started');
       console.log('');
     }, 60000);
 
@@ -221,12 +221,12 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('');
     }, 90000);
 
-    it('should let keepalive expire, then wait for codespace to shut down', async () => {
-      console.log('Waiting for keepalive to expire (2 minutes)...');
+    it('should let idle timeout expire, then wait for codespace to shut down', async () => {
+      console.log('Waiting for idle timeout to expire (2 minutes)...');
       await new Promise(resolve => setTimeout(resolve, 120000));
 
-      console.log('Keepalive expired. Daemon should stop SSH commands now.');
-      console.log('Waiting 6 more minutes for idle timeout to trigger shutdown...');
+      console.log('Idle timeout expired. Daemon should stop SSH commands now.');
+      console.log('Waiting 6 more minutes for GitHub idle timeout to trigger shutdown...');
       await new Promise(resolve => setTimeout(resolve, 360000));
 
       console.log('');
@@ -237,19 +237,19 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
 
       // Codespace should be unavailable/shutdown (not "Available")
       expect(info.state).not.toBe('Available');
-      console.log(`✓ Codespace shut down (state: ${info.state}) after keepalive expired`);
+      console.log(`✓ Codespace shut down (state: ${info.state}) after idle timeout expired`);
       console.log('');
-      console.log('Test 2 Complete: Codespace correctly shut down when keepalive expired');
+      console.log('Test 2 Complete: Codespace correctly shut down when idle timeout expired');
       console.log('');
     }, 540000); // 9 minute timeout
   });
 
-  describe('Test 3: Reactivate keepalive before idle timeout', () => {
+  describe('Test 3: Reactivate daemon before idle timeout', () => {
     let codespaceName: string;
 
     it('should create codespace with 5-minute idle timeout', async () => {
       console.log('========================================');
-      console.log('Test 3: Save Codespace by Reactivating Keepalive');
+      console.log('Test 3: Save Codespace by Reactivating Daemon');
       console.log('========================================');
       console.log('');
 
@@ -270,8 +270,8 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('');
     }, 180000);
 
-    it('should start daemon with short keepalive that will expire', async () => {
-      console.log('Starting daemon with 2-minute keepalive...');
+    it('should start daemon with short idle timeout that will expire', async () => {
+      console.log('Starting daemon with 2-minute idle timeout...');
 
       await execInCodespace(
         codespaceName,
@@ -279,11 +279,11 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
         { streamOutput: false }
       );
 
-      await startTrafficMonitor({
+      await startIdleTimeoutDaemon({
         codespaceName,
         serverPort: 9997,
         serverLogPath: '/tmp/test-keepalive3.log',
-        keepAliveHours: 2 / 60,
+        idleTimeoutHours: 2 / 60,
         sshIntervalMinutes: 0.5
       });
 
@@ -291,17 +291,17 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
       console.log('');
     }, 60000);
 
-    it('should let keepalive expire, then reactivate BEFORE idle timeout', async () => {
-      console.log('Waiting for keepalive to expire (2.5 minutes)...');
+    it('should let idle timeout expire, then reactivate BEFORE GitHub idle timeout', async () => {
+      console.log('Waiting for idle timeout to expire (2.5 minutes)...');
       await new Promise(resolve => setTimeout(resolve, 150000));
 
-      console.log('Keepalive expired. Daemon has stopped SSH commands.');
+      console.log('Idle timeout expired. Daemon has stopped SSH commands.');
       console.log('');
 
-      console.log('Waiting 2 more minutes (still under 5-minute idle timeout)...');
+      console.log('Waiting 2 more minutes (still under 5-minute GitHub idle timeout)...');
       await new Promise(resolve => setTimeout(resolve, 120000));
 
-      console.log('NOW generating CONTINUOUS activity to reactivate and maintain keepalive...');
+      console.log('NOW generating CONTINUOUS activity to reactivate and maintain daemon...');
       console.log('(This simulates ongoing server activity)');
       console.log('');
 
@@ -334,21 +334,21 @@ describe('Traffic Monitor Keepalive Behavior (Integration)', () => {
 
       console.log(`Codespace state: ${info.state}`);
       expect(info.state).toBe('Available');
-      console.log('✓ Codespace is still alive - saved by reactivated keepalive!');
+      console.log('✓ Codespace is still alive - saved by reactivated daemon!');
       console.log('');
-      console.log('Test 3 Complete: Successfully saved codespace by reactivating keepalive');
+      console.log('Test 3 Complete: Successfully saved codespace by reactivating daemon');
       console.log('');
     }, 600000); // 10 minute timeout
   });
 
   it('should display final summary', async () => {
     console.log('========================================');
-    console.log('Keepalive Behavior Tests Complete!');
+    console.log('Idle Timeout Daemon Behavior Tests Complete!');
     console.log('========================================');
     console.log('All behaviors verified:');
-    console.log('✓ Test 1: Codespace stayed alive with active keepalive');
-    console.log('✓ Test 2: Codespace shut down when keepalive expired');
-    console.log('✓ Test 3: Codespace saved by reactivating keepalive');
+    console.log('✓ Test 1: Codespace stayed alive with active daemon');
+    console.log('✓ Test 2: Codespace shut down when idle timeout expired');
+    console.log('✓ Test 3: Codespace saved by reactivating daemon');
     console.log('');
     console.log('The daemon successfully keeps codespaces alive!');
     console.log('');

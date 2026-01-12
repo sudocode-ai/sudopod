@@ -77,9 +77,9 @@ export interface ExecOptions {
 }
 
 /**
- * Options for starting traffic monitor daemon
+ * Options for starting idle timeout daemon
  */
-export interface TrafficMonitorOptions {
+export interface IdleTimeoutDaemonOptions {
   /** Codespace name */
   codespaceName: string;
   
@@ -89,8 +89,8 @@ export interface TrafficMonitorOptions {
   /** Path to sudocode server log file (e.g., /tmp/sudocode-3000.log) */
   serverLogPath: string;
   
-  /** Keepalive duration in hours */
-  keepAliveHours: number;
+  /** Idle timeout duration in hours - daemon maintains SSH keepalive until this expires */
+  idleTimeoutHours: number;
   
   /** SSH keepalive interval in minutes (default: 0.5 = 30 seconds) */
   sshIntervalMinutes?: number;

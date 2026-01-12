@@ -12,7 +12,7 @@ import { execInCodespace } from './execution.js';
  * 
  * Starts the sudocode server in the background using nohup, ensuring it persists
  * after SSH disconnection. Logs are written to /tmp/sudocode-<port>.log which is
- * monitored by the traffic monitor daemon for keepalive functionality.
+ * monitored by the idle timeout daemon for keepalive functionality.
  * 
  * Uses login shell (bash -l -c) which runs from the workspace directory by default,
  * ensuring proper environment setup and working directory.
@@ -55,7 +55,7 @@ export async function startSudocodeServer(
   // - Redirect stdin from /dev/null (prevents hanging)
   // 
   // Note: We do NOT use --keep-alive flag (removed per spec)
-  // Keepalive is now handled by the traffic monitor daemon
+  // Keepalive is now handled by the idle timeout daemon
   //
   // IMPORTANT: Uses background: true to add outer & for proper SSH backgrounding
   // Pattern: gh codespace ssh -- "bash -l -c 'nohup ... &' &"
