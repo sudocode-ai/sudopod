@@ -1,11 +1,11 @@
 /**
- * Unit tests: Traffic Monitor Keepalive Behavior
+ * Unit tests: Idle Timeout Daemon Behavior
  * 
- * These tests validate the keepalive logic without requiring real codespaces.
+ * These tests validate the idle timeout daemon logic without requiring real codespaces.
  * They mock the codespace primitives (execInCodespace, etc.) to test:
  * 
  * - Daemon script generation logic
- * - Heartbeat interval calculations
+ * - SSH interval calculations
  * - Port allocation logic
  * - Error handling paths
  * - SSH command execution logic
@@ -20,14 +20,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TrafficMonitorOptions } from '../../../../src/utils/codespaces/types.js';
+import type { IdleTimeoutDaemonOptions } from '../../../../src/utils/codespaces/types.js';
 
 // Mock the execution module
 vi.mock('../../../../src/utils/codespaces/execution.js', () => ({
   execInCodespace: vi.fn()
 }));
 
-describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
+describe('Idle Timeout Daemon Behavior (Unit Tests)', () => {
   let mockExecInCodespace: ReturnType<typeof vi.fn>;
   
   beforeEach(async () => {
@@ -45,13 +45,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
   
   describe('Daemon Script Generation', () => {
     it('should generate valid bash script with correct shebang', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace-abc123',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -63,7 +63,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       // Find the base64 write command
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
@@ -85,13 +85,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
     
     it('should calculate keepalive seconds correctly', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 2, // 2 hours = 7200 seconds
+        idleTimeoutHours: 2, // 2 hours = 7200 seconds
         sshIntervalMinutes: 1 // 1 minute = 60 seconds
       };
       
@@ -102,7 +102,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('base64 -d')
@@ -110,18 +110,18 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
       const base64Match = base64WriteCall![1].match(/echo '([^']+)'/);
       const scriptContent = Buffer.from(base64Match![1], 'base64').toString('utf-8');
       
-      expect(scriptContent).toContain('KEEPALIVE_SECONDS=7200');
+      expect(scriptContent).toContain('IDLE_TIMEOUT_SECONDS=7200');
       expect(scriptContent).toContain('SSH_INTERVAL=60');
     });
     
     it('should handle fractional time values correctly', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 0.5, // 30 minutes = 1800 seconds
+        idleTimeoutHours: 0.5, // 30 minutes = 1800 seconds
         sshIntervalMinutes: 0.5 // 30 seconds
       };
       
@@ -132,7 +132,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('base64 -d')
@@ -140,18 +140,18 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
       const base64Match = base64WriteCall![1].match(/echo '([^']+)'/);
       const scriptContent = Buffer.from(base64Match![1], 'base64').toString('utf-8');
       
-      expect(scriptContent).toContain('KEEPALIVE_SECONDS=1800');
+      expect(scriptContent).toContain('IDLE_TIMEOUT_SECONDS=1800');
       expect(scriptContent).toContain('SSH_INTERVAL=30');
     });
     
     it('should include SSH keepalive command with correct codespace name', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'my-special-codespace-xyz789',
         serverPort: 4000,
         serverLogPath: '/tmp/sudocode-4000.log',
-        keepAliveHours: 1,
+        idleTimeoutHours: 1,
         sshIntervalMinutes: 0.5
       };
       
@@ -162,7 +162,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('base64 -d')
@@ -175,13 +175,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
     
     it('should include proper logging statements', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -192,7 +192,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('base64 -d')
@@ -202,20 +202,20 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
       
       expect(scriptContent).toContain('log "Daemon started with PID $$"');
       expect(scriptContent).toContain('log "SSH keepalive executed successfully');
-      expect(scriptContent).toContain('log "Keepalive expired');
+      expect(scriptContent).toContain('log "Idle timeout expired');
       expect(scriptContent).toContain('skipping SSH"');
     });
   });
   
   describe('Daemon Startup Process', () => {
     it('should write script via base64 encoding', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -226,7 +226,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       // Should write via base64 to avoid heredoc issues
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
@@ -238,13 +238,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
     
     it('should make script executable', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -255,7 +255,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const chmodCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('chmod +x')
@@ -266,13 +266,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
     
     it('should start daemon in background with nohup', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -283,26 +283,25 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const nohupCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('nohup')
       );
       
       expect(nohupCall).toBeDefined();
-      expect(nohupCall![1]).toContain('bash -l -c');
       expect(nohupCall![1]).toContain('nohup /tmp/sudocode-monitor-3000.sh');
-      expect(nohupCall![1]).toContain('> /tmp/sudocode-monitor-3000-daemon.log 2>&1');
+      expect(nohupCall![1]).toContain('>/dev/null 2>&1');
     });
     
     it('should verify daemon started by checking PID file', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -313,7 +312,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const pidCheckCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('test -f /tmp/sudocode-monitor-3000.pid')
@@ -325,13 +324,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
   
   describe('Error Handling', () => {
     it('should throw error if PID file not created', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -346,19 +345,19 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await expect(startTrafficMonitor(options)).rejects.toThrow(
-        'Traffic monitor daemon failed to start: PID file not created'
+      await expect(startIdleTimeoutDaemon(options)).rejects.toThrow(
+        'Idle timeout daemon failed to start: PID file not created'
       );
     });
     
     it('should include daemon log in error message when startup fails', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -374,17 +373,17 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await expect(startTrafficMonitor(options)).rejects.toThrow(mockDaemonLog);
+      await expect(startIdleTimeoutDaemon(options)).rejects.toThrow(mockDaemonLog);
     });
     
     it('should validate keepalive parameters are positive', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 0, // Invalid: 0 hours (will default to 24 but still creates invalid value)
+        idleTimeoutHours: 0, // Invalid: 0 hours (will default to 24 but still creates invalid value)
         sshIntervalMinutes: 0.5
       };
       
@@ -399,36 +398,36 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
       });
       
       // Currently this throws due to PID file not existing, not due to validation
-      await expect(startTrafficMonitor(options)).rejects.toThrow();
+      await expect(startIdleTimeoutDaemon(options)).rejects.toThrow();
     });
     
     it('should throw error for invalid SSH interval parameters', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: -1 // Invalid: negative interval
       };
       
-      await expect(startTrafficMonitor(options)).rejects.toThrow(
-        'Invalid keepalive parameters'
+      await expect(startIdleTimeoutDaemon(options)).rejects.toThrow(
+        'Invalid idle timeout parameters'
       );
     });
   });
   
   describe('Port Management', () => {
     it('should use correct port in all file paths', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
       const testPort = 4567;
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: testPort,
         serverLogPath: `/tmp/sudocode-${testPort}.log`,
-        keepAliveHours: 24,
+        idleTimeoutHours: 24,
         sshIntervalMinutes: 0.5
       };
       
@@ -439,7 +438,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       // Check all commands use correct port
       const allCommands = mockExecInCodespace.mock.calls.map(call => call[1]);
@@ -447,26 +446,23 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
       
       expect(commandsWithPort.length).toBeGreaterThan(0);
       
-      // Verify specific paths
+      // Verify specific paths (daemon log path is inside the script, not in commands)
       const scriptPath = `/tmp/sudocode-monitor-${testPort}.sh`;
       const pidPath = `/tmp/sudocode-monitor-${testPort}.pid`;
-      const daemonLogPath = `/tmp/sudocode-monitor-${testPort}-daemon.log`;
       
       const hasScriptPath = allCommands.some(cmd => cmd.includes(scriptPath));
       const hasPidPath = allCommands.some(cmd => cmd.includes(pidPath));
-      const hasDaemonLogPath = allCommands.some(cmd => cmd.includes(daemonLogPath));
       
       expect(hasScriptPath).toBe(true);
       expect(hasPidPath).toBe(true);
-      expect(hasDaemonLogPath).toBe(true);
     });
   });
   
-  describe('Stop Traffic Monitor', () => {
+  describe('Stop Idle Timeout Daemon', () => {
     it('should kill daemon process and remove PID file', async () => {
-      const { stopTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { stopIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      await stopTrafficMonitor('test-codespace', 3000);
+      await stopIdleTimeoutDaemon('test-codespace', 3000);
       
       const killCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('kill')
@@ -478,10 +474,10 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
     
     it('should handle case where daemon is not running', async () => {
-      const { stopTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { stopIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
       // Should not throw even if daemon not running (idempotent)
-      await expect(stopTrafficMonitor('test-codespace', 3000)).resolves.not.toThrow();
+      await expect(stopIdleTimeoutDaemon('test-codespace', 3000)).resolves.not.toThrow();
       
       const killCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('kill')
@@ -492,13 +488,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
   });
   
-  describe('Check Traffic Monitor Status', () => {
+  describe('Check Idle Timeout Daemon Status', () => {
     it('should check both PID file and process status', async () => {
-      const { isTrafficMonitorRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { isIdleTimeoutDaemonRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
       
       mockExecInCodespace.mockResolvedValue('1');
       
-      const isRunning = await isTrafficMonitorRunning('test-codespace', 3000);
+      const isRunning = await isIdleTimeoutDaemonRunning('test-codespace', 3000);
       
       expect(isRunning).toBe(true);
       
@@ -513,31 +509,31 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
     });
     
     it('should return false if PID file does not exist', async () => {
-      const { isTrafficMonitorRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { isIdleTimeoutDaemonRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
       
       mockExecInCodespace.mockResolvedValue('0');
       
-      const isRunning = await isTrafficMonitorRunning('test-codespace', 3000);
+      const isRunning = await isIdleTimeoutDaemonRunning('test-codespace', 3000);
       
       expect(isRunning).toBe(false);
     });
     
     it('should return false if process is not running', async () => {
-      const { isTrafficMonitorRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { isIdleTimeoutDaemonRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
       
       mockExecInCodespace.mockResolvedValue('0');
       
-      const isRunning = await isTrafficMonitorRunning('test-codespace', 3000);
+      const isRunning = await isIdleTimeoutDaemonRunning('test-codespace', 3000);
       
       expect(isRunning).toBe(false);
     });
     
     it('should return false if codespace is unreachable', async () => {
-      const { isTrafficMonitorRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { isIdleTimeoutDaemonRunning } = await import('../../../../src/utils/codespaces/keepalive.js');
       
       mockExecInCodespace.mockRejectedValue(new Error('Connection failed'));
       
-      const isRunning = await isTrafficMonitorRunning('test-codespace', 3000);
+      const isRunning = await isIdleTimeoutDaemonRunning('test-codespace', 3000);
       
       expect(isRunning).toBe(false);
     });
@@ -545,13 +541,13 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
   
   describe('Default Values', () => {
     it('should use default SSH interval if not specified', async () => {
-      const { startTrafficMonitor } = await import('../../../../src/utils/codespaces/keepalive.js');
+      const { startIdleTimeoutDaemon } = await import('../../../../src/utils/codespaces/keepalive.js');
       
-      const options: TrafficMonitorOptions = {
+      const options: IdleTimeoutDaemonOptions = {
         codespaceName: 'test-codespace',
         serverPort: 3000,
         serverLogPath: '/tmp/sudocode-3000.log',
-        keepAliveHours: 24
+        idleTimeoutHours: 24
         // sshIntervalMinutes not specified
       };
       
@@ -562,7 +558,7 @@ describe('Traffic Monitor Keepalive Behavior (Unit Tests)', () => {
         return 'success';
       });
       
-      await startTrafficMonitor(options);
+      await startIdleTimeoutDaemon(options);
       
       const base64WriteCall = mockExecInCodespace.mock.calls.find(
         (call) => call[1].includes('base64 -d')

@@ -63,12 +63,23 @@ export interface ExecOptions {
   
   /** Stream output in real-time (default: true) */
   streamOutput?: boolean;
+  
+  /** 
+   * Run command in background with proper SSH backgrounding (default: false)
+   * 
+   * When true, adds an extra & outside the bash -l -c command to ensure
+   * the process properly backgrounds and persists after SSH disconnects.
+   * This is needed for nohup processes.
+   * 
+   * Pattern: gh codespace ssh -- "bash -l -c 'command &' &"
+   */
+  background?: boolean;
 }
 
 /**
- * Options for starting traffic monitor daemon
+ * Options for starting idle timeout daemon
  */
-export interface TrafficMonitorOptions {
+export interface IdleTimeoutDaemonOptions {
   /** Codespace name */
   codespaceName: string;
   
@@ -78,8 +89,8 @@ export interface TrafficMonitorOptions {
   /** Path to sudocode server log file (e.g., /tmp/sudocode-3000.log) */
   serverLogPath: string;
   
-  /** Keepalive duration in hours */
-  keepAliveHours: number;
+  /** Idle timeout duration in hours - daemon maintains SSH keepalive until this expires */
+  idleTimeoutHours: number;
   
   /** SSH keepalive interval in minutes (default: 0.5 = 30 seconds) */
   sshIntervalMinutes?: number;

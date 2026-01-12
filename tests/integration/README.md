@@ -75,8 +75,8 @@ This will:
 # Run only the full deployment test
 npx vitest run tests/integration/utils/codespaces/full-deployment.test.ts --config vitest.integration.config.ts
 
-# Run only keepalive behavior tests
-npx vitest run tests/integration/utils/codespaces/keepalive-behavior.test.ts --config vitest.integration.config.ts
+# Run only idle timeout behavior tests
+npx vitest run tests/integration/utils/codespaces/idle-timeout-behavior.test.ts --config vitest.integration.config.ts
 ```
 
 ### Watch Mode (Not Recommended)
@@ -108,7 +108,7 @@ tests/integration/
 │   └── codespaces/
 │       ├── helpers.ts                  # Test utilities and cleanup
 │       ├── full-deployment.test.ts     # End-to-end deployment test
-│       ├── keepalive-behavior.test.ts  # Traffic monitor validation
+│       ├── idle-timeout-behavior.test.ts  # Idle timeout daemon validation
 │       └── dev-mode-installation.test.ts # Dev mode installation test
 ```
 
