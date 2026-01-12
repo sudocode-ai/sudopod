@@ -109,16 +109,11 @@ describe('Claude Auth Token Support', () => {
       console.log('Testing Claude integration with OAuth token...');
       console.log('This may take up to 60 seconds for Claude to respond...');
 
-      // Write token to file to avoid quoting issues, then use it
-      await execInCodespace(
-        codespaceName,
-        `echo '${claudeAuthToken}' > /tmp/claude_token`,
-        { timeout: 5000, streamOutput: false }
-      );
-
+      // Use export in a subshell to avoid quoting issues
+      // The parentheses create a subshell where we can safely set the env var
       const result = await execInCodespace(
         codespaceName,
-        'CLAUDE_CODE_OAUTH_TOKEN=$(cat /tmp/claude_token) claude -p hello && rm /tmp/claude_token',
+        `(export CLAUDE_CODE_OAUTH_TOKEN=${claudeAuthToken}; claude -p hello)`,
         {
           timeout: 60000, // 60 seconds for Claude to respond
           streamOutput: true,

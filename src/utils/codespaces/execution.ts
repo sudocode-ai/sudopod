@@ -98,17 +98,18 @@ export async function execInCodespace(
     ? `cd ${cwd} && ${command}`
     : command;
 
-  // Escape command for bash -l -c execution (handle single quotes)
-  const escapedCommand = escapeForLoginShell(wrappedCommand);
+  // Use base64 encoding to avoid all quoting issues
+  // This is robust against any characters in the command (quotes, dollars, backticks, etc.)
+  const encodedCommand = Buffer.from(wrappedCommand).toString('base64');
   
   // Use login shell pattern for proper environment setup
+  // Decode and execute the command using base64
   // For background processes, we rely on the command itself to have & for backgrounding
   // The outer & after the quotes ensures the SSH command returns immediately
-  // Pattern: gh codespace ssh -- "bash -l -c 'nohup command ... &' &"
-  // Note: The command passed in should already contain the inner & for nohup
   const sshCommand = background
-    ? `gh codespace ssh --codespace ${name} -- "bash -l -c '${escapedCommand}' &"`
-    : `gh codespace ssh --codespace ${name} -- "bash -l -c '${escapedCommand}'"`;
+    ? `gh codespace ssh --codespace ${name} -- "bash -l -c \\"echo ${encodedCommand} | base64 -d | bash\\" &"`
+    : `gh codespace ssh --codespace ${name} -- "bash -l -c \\"echo ${encodedCommand} | base64 -d | bash\\""`;
+
 
   return new Promise((resolve, reject) => {
     const child = exec(sshCommand, { timeout }, (error, stdout, stderr) => {
