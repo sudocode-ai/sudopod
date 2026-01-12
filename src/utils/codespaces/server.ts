@@ -6,6 +6,7 @@
  */
 
 import { execInCodespace } from './execution.js';
+import type { StartServerOptions } from './types.js';
 
 /**
  * Start sudocode server in background
@@ -28,6 +29,8 @@ import { execInCodespace } from './execution.js';
  * 
  * @param name - Codespace name
  * @param port - Port number for the server
+ * @param options - Optional configuration
+ * @param options.claudeAuthToken - Optional Claude Code OAuth token (sk-ant-oat01-...) to pass via CLAUDE_CODE_OAUTH_TOKEN env var
  * @returns Promise that resolves when the start command completes (not when server is ready)
  * @throws Error if the start command fails to execute
  * 
@@ -35,6 +38,11 @@ import { execInCodespace } from './execution.js';
  * ```typescript
  * // Start server on default port (runs in /workspaces/<repo> automatically)
  * await startSudocodeServer('mycodespace', 3000);
+ * 
+ * // Start server with Claude Code OAuth token
+ * await startSudocodeServer('mycodespace', 3000, {
+ *   claudeAuthToken: 'sk-ant-oat01-...'
+ * });
  * 
  * // Logs will be written to: /tmp/sudocode-3000.log
  * // Server will continue running after SSH disconnects
@@ -46,7 +54,8 @@ import { execInCodespace } from './execution.js';
  */
 export async function startSudocodeServer(
   name: string,
-  port: number
+  port: number,
+  options?: StartServerOptions
 ): Promise<void> {
   // Use nohup for background process persistence
   // - Login shell runs from workspace directory by default
@@ -59,9 +68,15 @@ export async function startSudocodeServer(
   //
   // IMPORTANT: Uses background: true to add outer & for proper SSH backgrounding
   // Pattern: gh codespace ssh -- "bash -l -c 'nohup ... &' &"
+  
+  // Build the command with optional CLAUDE_CODE_OAUTH_TOKEN environment variable
+  const envPrefix = options?.claudeAuthToken 
+    ? `CLAUDE_CODE_OAUTH_TOKEN=${options.claudeAuthToken} `
+    : '';
+  
   await execInCodespace(
     name,
-    `nohup sudocode server --port ${port} > /tmp/sudocode-${port}.log 2>&1 </dev/null &`,
+    `${envPrefix}nohup sudocode server --port ${port} > /tmp/sudocode-${port}.log 2>&1 </dev/null &`,
     {
       streamOutput: false,
       timeout: 10000, // 10 seconds should be plenty for start command

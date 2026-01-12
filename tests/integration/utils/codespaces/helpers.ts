@@ -7,6 +7,8 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { readFile } from 'fs/promises';
+import { resolve } from 'path';
 
 const execPromise = promisify(exec);
 
@@ -250,4 +252,108 @@ export async function withCleanup<T>(
     }
     throw error;
   }
+}
+
+/**
+ * Load secrets from a .env.secrets file
+ * 
+ * The file should be in the format:
+ * KEY=value
+ * ANOTHER_KEY=another_value
+ * 
+ * @param secretsPath Optional path to secrets file (default: tests/.env.secrets)
+ * @returns Object with key-value pairs from the secrets file
+ */
+export async function loadSecretsFile(
+  secretsPath?: string
+): Promise<Record<string, string>> {
+  const path = secretsPath || resolve(process.cwd(), 'tests', '.env.secrets');
+  
+  try {
+    const content = await readFile(path, 'utf-8');
+    const secrets: Record<string, string> = {};
+    
+    // Parse the file line by line
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      
+      // Skip empty lines and comments
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+      
+      // Parse KEY=value format
+      const match = trimmed.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        const value = match[2].trim();
+        secrets[key] = value;
+      }
+    }
+    
+    return secrets;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // File doesn't exist - return empty object
+      return {};
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get a secret value from the secrets file with helpful error message
+ * 
+ * @param secretName Name of the secret to retrieve
+ * @param secretsPath Optional path to secrets file (default: tests/.env.secrets)
+ * @returns Secret value or undefined if not found
+ */
+export async function getSecret(
+  secretName: string,
+  secretsPath?: string
+): Promise<string | undefined> {
+  const secrets = await loadSecretsFile(secretsPath);
+  return secrets[secretName];
+}
+
+/**
+ * Print instructions for setting up the secrets file
+ * 
+ * @param secretName Name of the secret that's missing
+ * @param description Description of what the secret is for
+ * @param exampleValue Example value (will be shown but not actual secret)
+ */
+export function printSecretsInstructions(
+  secretName: string,
+  description: string,
+  exampleValue: string
+): void {
+  const secretsPath = resolve(process.cwd(), 'tests', '.env.secrets');
+  
+  console.log('\n' + '='.repeat(80));
+  console.log('⚠️  Missing Secret: ' + secretName);
+  console.log('='.repeat(80));
+  console.log('');
+  console.log('This test requires a secret that is not currently configured.');
+  console.log('');
+  console.log('Secret:', secretName);
+  console.log('Purpose:', description);
+  console.log('');
+  console.log('To set up this secret:');
+  console.log('');
+  console.log('1. Create a secrets file at:');
+  console.log('   ' + secretsPath);
+  console.log('');
+  console.log('2. Add the following line to the file:');
+  console.log('   ' + secretName + '=' + exampleValue);
+  console.log('');
+  console.log('3. Make sure to add this file to .gitignore:');
+  console.log('   echo "tests/.env.secrets" >> .gitignore');
+  console.log('');
+  console.log('Example file content:');
+  console.log('   # Integration test secrets - DO NOT COMMIT');
+  console.log('   ' + secretName + '=' + exampleValue);
+  console.log('');
+  console.log('='.repeat(80));
+  console.log('');
 }
