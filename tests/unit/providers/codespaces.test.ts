@@ -438,4 +438,139 @@ describe('CodespacesProvider', () => {
       vi.mocked(checkGhAuthenticated).mockReset();
     });
   });
+
+  describe('deploy - Claude auth token integration', () => {
+    // Helper to setup successful deployment mocks
+    async function setupDeploymentMocks() {
+      const { checkGhCliInstalled, checkGhAuthenticated, createCodespace, waitForCodespaceReady } = await import('../../../src/utils/codespaces/management.js');
+      const { waitForPortListening, forwardPort, getCodespacePortUrl } = await import('../../../src/utils/codespaces/ports.js');
+      const { installClaudeCode, installSudocodeGlobally, initializeSudocodeProject } = await import('../../../src/utils/codespaces/installation.js');
+      const { startSudocodeServer } = await import('../../../src/utils/codespaces/server.js');
+      const { startIdleTimeoutDaemon } = await import('../../../src/utils/codespaces/keepalive.js');
+
+      // Mock prerequisites
+      vi.mocked(checkGhCliInstalled).mockResolvedValue(undefined);
+      vi.mocked(checkGhAuthenticated).mockResolvedValue(undefined);
+
+      // Mock codespace creation
+      vi.mocked(createCodespace).mockResolvedValue({
+        name: 'test-codespace-abc123',
+        repository: 'anthropics/sudocode',
+        state: 'Available',
+        createdAt: new Date().toISOString(),
+        url: 'https://test-codespace.github.dev',
+        machine: 'basicLinux32gb',
+      });
+
+      vi.mocked(waitForCodespaceReady).mockResolvedValue();
+
+      // Mock installation
+      vi.mocked(installClaudeCode).mockResolvedValue();
+      vi.mocked(installSudocodeGlobally).mockResolvedValue();
+      vi.mocked(initializeSudocodeProject).mockResolvedValue();
+
+      // Mock server startup
+      vi.mocked(startSudocodeServer).mockResolvedValue();
+      vi.mocked(waitForPortListening).mockResolvedValue();
+      vi.mocked(startIdleTimeoutDaemon).mockResolvedValue();
+
+      // Mock port forwarding
+      vi.mocked(forwardPort).mockResolvedValue();
+      vi.mocked(getCodespacePortUrl).mockResolvedValue('https://test-codespace-3000.app.github.dev');
+    }
+
+    it('should pass claudeLtt token to startSudocodeServer when provided', async () => {
+      await setupDeploymentMocks();
+      const { startSudocodeServer } = await import('../../../src/utils/codespaces/server.js');
+
+      const options: DeployOptions = {
+        ...completeCodespacesOptions,
+        models: {
+          claudeLtt: 'ltt_test_token_abc123'
+        }
+      };
+
+      await provider.deploy(options);
+
+      // Verify startSudocodeServer was called with claudeAuthToken option
+      expect(startSudocodeServer).toHaveBeenCalledWith(
+        'test-codespace-abc123',
+        3000,
+        {
+          claudeAuthToken: 'ltt_test_token_abc123'
+        }
+      );
+    });
+
+    it('should start server without auth token when claudeLtt not provided', async () => {
+      await setupDeploymentMocks();
+      const { startSudocodeServer } = await import('../../../src/utils/codespaces/server.js');
+
+      const options: DeployOptions = {
+        ...minimalCodespacesOptions,
+        models: undefined
+      };
+
+      await provider.deploy(options);
+
+      // Verify startSudocodeServer was called without claudeAuthToken
+      expect(startSudocodeServer).toHaveBeenCalledWith(
+        'test-codespace-abc123',
+        3000,
+        {
+          claudeAuthToken: undefined
+        }
+      );
+    });
+
+    it('should start server without auth token when models object exists but claudeLtt is undefined', async () => {
+      await setupDeploymentMocks();
+      const { startSudocodeServer } = await import('../../../src/utils/codespaces/server.js');
+
+      const options: DeployOptions = {
+        ...minimalCodespacesOptions,
+        models: {
+          providerConfig: {
+            provider: 'anthropic',
+            apiKey: 'sk-ant-test'
+          }
+        }
+      };
+
+      await provider.deploy(options);
+
+      // Verify startSudocodeServer was called without claudeAuthToken
+      expect(startSudocodeServer).toHaveBeenCalledWith(
+        'test-codespace-abc123',
+        3000,
+        {
+          claudeAuthToken: undefined
+        }
+      );
+    });
+
+    it('should create deployment successfully with auth token', async () => {
+      await setupDeploymentMocks();
+
+      const options: DeployOptions = {
+        ...completeCodespacesOptions,
+        models: {
+          claudeLtt: 'ltt_test_token_abc123'
+        }
+      };
+
+      const deployment = await provider.deploy(options);
+
+      // Verify deployment structure
+      expect(deployment.id).toBe('test-codespace-abc123');
+      expect(deployment.name).toBe('test-codespace-abc123');
+      expect(deployment.provider).toBe('codespaces');
+      expect(deployment.status).toBe('running');
+      expect(deployment.git).toEqual({
+        owner: 'anthropics',
+        repo: 'sudocode',
+        branch: 'main',
+      });
+    });
+  });
 });
