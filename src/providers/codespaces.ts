@@ -104,7 +104,8 @@ export class CodespacesProvider implements Provider {
         port,
         idleTimeout,
         workspaceDir,
-        isDev
+        isDev,
+        options.models?.claudeLtt
       );
 
       // Register port with GitHub (handles local port conflicts)
@@ -273,10 +274,13 @@ export class CodespacesProvider implements Provider {
     port: number,
     idleTimeout: number | undefined,
     workspaceDir: string,
-    isDev: boolean
+    isDev: boolean,
+    claudeAuthToken?: string
   ): Promise<void> {
     // Start server process
-    await startSudocodeServer(name, port);
+    await startSudocodeServer(name, port, {
+      claudeAuthToken
+    });
 
     // Wait for port to be listening
     await waitForPortListening(name, port, 30);
