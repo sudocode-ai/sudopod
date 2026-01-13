@@ -5,33 +5,52 @@ src/
 
 # Tests
 tests/
-__tests__/
 *.test.ts
 *.spec.ts
+__tests__/
+coverage/
+
+# Build configuration
+tsconfig.json
+vitest.config.ts
+vitest.integration.config.ts
 
 # Development files
+.git/
+.gitignore
 .github/
 .vscode/
 .idea/
+
+# Documentation (keep README.md)
+docs/
+
+# Specs and issues
+specs/
+.sudocode/
+
+# References
+refs/
+
+# Node modules
+node_modules/
+
+# Logs
 *.log
-*.tsbuildinfo
-.env
-.env.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Build artifacts
-tsconfig.json
-tsconfig.*.json
-
-# Git
-.git/
-.gitignore
-.gitattributes
-
-# Documentation
-*.md
-!README.md
-
-# Misc
+# OS files
 .DS_Store
-coverage/
-.nyc_output/
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+circle.yml

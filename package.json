@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:integration": "RUN_INTEGRATION_TESTS=1 vitest run --config vitest.integration.config.ts",
+    "test:package": "npm run build && node scripts/package-validation-test.ts",
+    "test:e2e:deploy": "npm run build && node scripts/e2e-deploy-test.ts",
     "test:all": "npm run test:unit && npm run test:integration",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"

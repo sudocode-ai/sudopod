@@ -12,6 +12,38 @@ import type {
   ListFilters,
 } from '../types.js';
 import type { Provider } from '../core/provider.js';
+import {
+  AuthenticationError,
+  DeploymentFailedError,
+  ProviderError,
+} from '../core/errors.js';
+import {
+  checkGhCliInstalled,
+  checkGhAuthenticated,
+  createCodespace,
+  waitForCodespaceReady,
+  deleteCodespace,
+  listCodespaces,
+  getCodespaceInfo,
+} from '../utils/codespaces/management.js';
+import type { CodespaceInfo } from '../utils/codespaces/types.js';
+import {
+  waitForPortListening,
+  forwardPort,
+  getCodespacePortUrl,
+} from '../utils/codespaces/ports.js';
+import {
+  installClaudeCode,
+  installSudocodeGlobally,
+  installSudocodeFromLocal,
+  initializeSudocodeProject,
+} from '../utils/codespaces/installation.js';
+import {
+  startSudocodeServer,
+} from '../utils/codespaces/server.js';
+import {
+  startIdleTimeoutDaemon,
+} from '../utils/codespaces/keepalive.js';
 
 /**
  * Provider implementation for GitHub Codespaces
@@ -25,8 +57,14 @@ export class CodespacesProvider implements Provider {
 
   constructor(private config: CodespacesConfig) {}
 
+  /**
+   * Deploy a new Codespace with sudocode
+   */
   async deploy(options: DeployOptions): Promise<Deployment> {
-    // Extract git repository information from new structure
+    // Validate prerequisites
+    await this.checkPrerequisites();
+
+    // Extract git repository information
     const { owner, repo, branch } = options.git;
     const repository = `${owner}/${repo}`;
     
@@ -34,144 +72,241 @@ export class CodespacesProvider implements Provider {
     const providerOpts = options.providerOptions as CodespacesDeployOptions;
     const machine = providerOpts.machine || 'basicLinux32gb';
     const retentionPeriod = providerOpts.retentionPeriod || 14;
-    
-    // Handle agent installation
-    if (options.agents?.install) {
-      for (const agent of options.agents.install) {
-        if (agent === 'claude') {
-          // TODO: Implement Claude agent installation
-          // This is a stub - actual implementation will be added later
-          // Agent installation will be handled during environment setup
-        } else {
-          // TODO: Warn about unknown agent types
-          // For now, unknown agents are silently ignored
-        }
-      }
-    }
-    
-    // Handle LLM configuration
-    const llmConfig = this.prepareLlmConfig(options.models);
-    if (llmConfig) {
-      // TODO: Pass LLM configuration to deployed environment
-      // This will be implemented when we add environment setup logic
-      // Configuration is prepared and ready to be passed to the Codespace
-    }
-    
-    // TODO: Execute `gh codespace create` with appropriate flags:
-    //       - Repository: repository (owner/repo format)
-    //       - Branch: branch
-    //       - Machine type: machine
-    //       - Retention period: retentionPeriod
-    // TODO: Parse gh CLI JSON output to extract Codespace details
-    // TODO: Implement keepalive mechanism to bypass Codespace idle timeout
-    //       (see CodespacesDeployOptions note about idleTimeout being ignored)
-    // TODO: Map response to Deployment interface with all required fields
-    // TODO: Handle deployment failures with DeploymentFailedError
-    throw new Error('CodespacesProvider.deploy() not yet implemented');
-  }
 
-  /**
-   * Prepare LLM configuration from options.models
-   * Returns configuration object or null if no LLM config provided
-   */
-  private prepareLlmConfig(models?: DeployOptions['models']): Record<string, any> | null {
-    if (!models) {
-      return null;
-    }
+    // Determine workspace directory
+    const workspaceName = repo;
+    const workspaceDir = options.workspaceDir || `/workspaces/${workspaceName}`;
 
-    const config: Record<string, any> = {};
+    try {
+      // Create Codespace with hardcoded 5-minute idle timeout
+      // Our idle timeout daemon will prevent GitHub's auto-stop until user's idle_timeout expires
+      const codespace = await createCodespace({
+        repository,
+        machine,
+        idleTimeout: 5, // Hardcoded 5 minutes - daemon prevents auto-stop
+        retentionPeriod,
+        branch,
+      });
 
-    // Handle Claude LTT
-    if (models.claudeLtt) {
-      config.claudeLtt = models.claudeLtt;
-    }
+      // Wait for ready
+      await waitForCodespaceReady(codespace.name, 30);
 
-    // Handle direct provider config
-    if (models.providerConfig) {
-      config.providerConfig = models.providerConfig;
-    }
+      // Install sudocode
+      const isDev = options.dev || false;
+      await this.installSudocode(codespace.name, isDev, workspaceDir);
 
-    // Handle provider config from environment variable
-    if (models.providerConfigEnvVar) {
-      config.providerConfigEnvVar = models.providerConfigEnvVar;
-    }
-
-    return Object.keys(config).length > 0 ? config : null;
-  }
-
-  async stop(name: string): Promise<void> {
-    // TODO: Implement Codespace stop/delete using gh CLI
-    // TODO: Execute `gh codespace delete` with Codespace name
-    // TODO: Handle force deletion if necessary
-    // TODO: Throw ProviderError if Codespace not found or deletion fails
-    throw new Error('CodespacesProvider.stop() not yet implemented');
-  }
-
-  async getStatus(name: string): Promise<DeploymentStatus> {
-    // TODO: Implement status query using gh CLI
-    // TODO: Execute `gh codespace view` with Codespace name and JSON output
-    // TODO: Map Codespace state to DeploymentStatus enum:
-    //       - Available -> 'running'
-    //       - Starting -> 'starting'
-    //       - Shutdown -> 'stopped'
-    //       - etc.
-    // TODO: Throw ProviderError if Codespace not found
-    throw new Error('CodespacesProvider.getStatus() not yet implemented');
-  }
-
-  async list(filters?: ListFilters): Promise<Deployment[]> {
-    // TODO: Implement Codespaces listing using gh CLI
-    // TODO: Execute `gh codespace list` with JSON output
-    // TODO: Parse all Codespaces from JSON response
-    // TODO: Map each Codespace to Deployment format using mapToDeployment()
-    // TODO: Apply filters (status, owner, repo, date range)
-    //       Note: filters.owner and filters.repo replaced filters.repository
-    // TODO: Return filtered array of Deployments
-    throw new Error('CodespacesProvider.list() not yet implemented');
-  }
-
-  /**
-   * Helper method to map Codespace data to Deployment object
-   * Example of how to construct Deployment with new git structure
-   * 
-   * @param codespace - Raw codespace data from gh CLI
-   * @param options - Original deploy options (for keepAliveHours, etc.)
-   * @returns Deployment object
-   */
-  private mapToDeployment(codespace: any, options?: DeployOptions): Deployment {
-    // Parse repository string "owner/repo" into components
-    const [owner, repo] = codespace.repository.split('/');
-    
-    return {
-      id: codespace.name,
-      name: codespace.displayName || codespace.name,
-      provider: 'codespaces' as const,
+      // Start server and daemon
+      const port = options.server.port || 3000;
+      const idleTimeout = options.server.idleTimeout;
       
-      // Use new git structure instead of repository string
-      git: {
-        owner,
-        repo,
-        branch: codespace.gitStatus?.ref || options?.git.branch,
-      },
-      
-      status: this.mapStatus(codespace.state),
-      createdAt: codespace.createdAt,
-      urls: {
-        workspace: codespace.webUrl || '',
-        sudocode: '', // TODO: Construct from port forwarding
-        ssh: codespace.connection?.sessionId ? `ssh ${codespace.connection.sessionId}` : undefined,
-      },
-      
-      keepAliveHours: options?.server.keepAliveHours || 72,
-      idleTimeout: undefined, // Codespaces ignores idleTimeout
-      
-      metadata: {
-        codespaces: {
-          machine: codespace.machine || 'basicLinux32gb',
-          retentionPeriod: codespace.retentionPeriod || 14,
+      await this.startServer(
+        codespace.name,
+        port,
+        idleTimeout,
+        workspaceDir,
+        isDev,
+        options.models?.claudeLtt
+      );
+
+      // Register port with GitHub (handles local port conflicts)
+      await this.registerPortWithGitHub(codespace.name, port);
+
+      // Get URLs
+      const urls = await this.getUrls(codespace.name, port);
+
+      // Return deployment info
+      return {
+        id: codespace.name,
+        name: codespace.name,
+        provider: 'codespaces',
+        git: {
+          owner,
+          repo,
+          branch,
         },
-      },
+        status: 'running',
+        createdAt: new Date().toISOString(),
+        urls,
+        keepAliveHours: options.server.keepAliveHours || 72,
+        idleTimeout,
+        metadata: {
+          codespaces: {
+            machine,
+            retentionPeriod,
+          },
+        },
+      };
+
+    } catch (error: any) {
+      throw new DeploymentFailedError(error.message, error);
+    }
+  }
+
+  /**
+   * Stop and delete a Codespace
+   */
+  async stop(name: string): Promise<void> {
+    try {
+      await deleteCodespace(name);
+    } catch (error: any) {
+      throw new ProviderError('codespaces', 'stop', error.message);
+    }
+  }
+
+  /**
+   * Get status of a Codespace
+   */
+  async getStatus(name: string): Promise<DeploymentStatus> {
+    try {
+      const codespace = await getCodespaceInfo(name);
+      return this.mapStatus(codespace.state);
+    } catch (error: any) {
+      throw new ProviderError('codespaces', 'getStatus', error.message);
+    }
+  }
+
+  /**
+   * List Codespaces
+   */
+  async list(filters?: ListFilters): Promise<Deployment[]> {
+    try {
+      const codespaces = await listCodespaces();
+      
+      // Convert to Deployment objects
+      let deployments = codespaces.map(cs => this.mapToDeployment(cs));
+
+      // Apply filters
+      if (filters?.status) {
+        deployments = deployments.filter(d => 
+          filters.status!.includes(d.status)
+        );
+      }
+      if (filters?.owner) {
+        deployments = deployments.filter(d => 
+          d.git.owner === filters.owner
+        );
+      }
+      if (filters?.repo) {
+        deployments = deployments.filter(d => 
+          d.git.repo === filters.repo
+        );
+      }
+      if (filters?.createdAfter) {
+        deployments = deployments.filter(d => 
+          d.createdAt >= filters.createdAfter!
+        );
+      }
+      if (filters?.createdBefore) {
+        deployments = deployments.filter(d => 
+          d.createdAt <= filters.createdBefore!
+        );
+      }
+
+      return deployments;
+    } catch (error: any) {
+      throw new ProviderError('codespaces', 'list', error.message);
+    }
+  }
+
+  /**
+   * Get URLs for a Codespace
+   */
+  async getUrls(name: string, port: number = 3000): Promise<DeploymentUrls> {
+    const codespace = await getCodespaceInfo(name);
+    const workspace = `https://${name}.github.dev`;
+    const sudocode = await getCodespacePortUrl(name, port);
+    const ssh = `gh codespace ssh --codespace ${name}`;
+
+    return {
+      workspace,
+      sudocode,
+      ssh,
     };
+  }
+
+  /**
+   * Check prerequisites (gh CLI installed and authenticated)
+   */
+  private async checkPrerequisites(): Promise<void> {
+    try {
+      await checkGhCliInstalled();
+    } catch {
+      throw new AuthenticationError(
+        'codespaces',
+        'GitHub CLI not found. Install from https://cli.github.com'
+      );
+    }
+
+    try {
+      await checkGhAuthenticated();
+    } catch {
+      throw new AuthenticationError(
+        'codespaces',
+        'Not authenticated with GitHub. Run: gh auth login'
+      );
+    }
+  }
+
+  /**
+   * Install sudocode in Codespace
+   */
+  private async installSudocode(
+    name: string,
+    isDev: boolean,
+    workspaceDir: string
+  ): Promise<void> {
+    await installClaudeCode(name);
+
+    if (isDev) {
+      await installSudocodeFromLocal(name);
+    } else {
+      await installSudocodeGlobally(name);
+    }
+
+    await initializeSudocodeProject(name);
+  }
+
+  /**
+   * Start sudocode server and idle timeout daemon
+   */
+  private async startServer(
+    name: string,
+    port: number,
+    idleTimeout: number | undefined,
+    workspaceDir: string,
+    isDev: boolean,
+    claudeAuthToken?: string
+  ): Promise<void> {
+    // Start server process
+    await startSudocodeServer(name, port, {
+      claudeAuthToken
+    });
+
+    // Wait for port to be listening
+    await waitForPortListening(name, port, 30);
+
+    // Start idle timeout daemon with user's configured idle_timeout
+    const idleTimeoutHours = idleTimeout !== undefined 
+      ? idleTimeout / 60  // Convert minutes to hours
+      : 72; // Default: 72 hours (3 days)
+    
+    await startIdleTimeoutDaemon({
+      codespaceName: name,
+      serverPort: port,
+      serverLogPath: `/tmp/sudocode-${port}.log`,
+      idleTimeoutHours,
+      sshIntervalMinutes: 0.5, // SSH every 30 seconds
+    });
+  }
+
+  /**
+   * Register port with GitHub forwarding system
+   */
+  private async registerPortWithGitHub(name: string, port: number): Promise<void> {
+    // Forward port to register it with GitHub's forwarding system
+    // The forwardPort function starts a forward, waits briefly, then kills it
+    // The port remains registered after the forward process exits
+    await forwardPort(name, port);
   }
 
   /**
@@ -188,15 +323,37 @@ export class CodespacesProvider implements Provider {
     return statusMap[state] || 'failed';
   }
 
-  async getUrls(name: string): Promise<DeploymentUrls> {
-    // TODO: Implement URL generation for Codespace
-    // TODO: Query Codespace details using gh CLI if needed
-    // TODO: Construct workspace URL (GitHub Codespaces web interface)
-    // TODO: Construct sudocode URL using port forwarding
-    //       (e.g., https://<codespace-name>-<port>.app.github.dev)
-    // TODO: Generate SSH connection string if available
-    // TODO: Return DeploymentUrls object with all URLs
-    // TODO: Throw ProviderError if Codespace not found
-    throw new Error('CodespacesProvider.getUrls() not yet implemented');
+  /**
+   * Convert CodespaceInfo to Deployment
+   */
+  private mapToDeployment(cs: CodespaceInfo): Deployment {
+    // Parse repository string "owner/repo" into components
+    const [owner, repo] = (cs.repository || 'unknown/unknown').split('/');
+    
+    return {
+      id: cs.name,
+      name: cs.displayName || cs.name,
+      provider: 'codespaces',
+      git: {
+        owner,
+        repo,
+        branch: cs.branch,
+      },
+      status: this.mapStatus(cs.state),
+      createdAt: cs.createdAt || new Date().toISOString(),
+      urls: {
+        workspace: cs.url || `https://${cs.name}.github.dev`,
+        sudocode: `https://${cs.name}-3000.app.github.dev`,
+        ssh: `gh codespace ssh --codespace ${cs.name}`,
+      },
+      keepAliveHours: 72, // Default
+      idleTimeout: undefined, // Codespaces ignores idleTimeout
+      metadata: {
+        codespaces: {
+          machine: cs.machine || 'basicLinux32gb',
+          retentionPeriod: 14, // Default
+        },
+      },
+    };
   }
 }

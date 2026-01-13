@@ -7,3 +7,6 @@ dist/
 .env
 .sudocode/merge-driver.log
 .cursor
+
+# Integration test secrets
+tests/.env.secrets

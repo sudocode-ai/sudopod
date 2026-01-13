@@ -77,6 +77,14 @@ export interface ExecOptions {
 }
 
 /**
+ * Options for starting the sudocode server
+ */
+export interface StartServerOptions {
+  /** Optional Claude Code OAuth token (sk-ant-oat01-...) to pass via CLAUDE_CODE_OAUTH_TOKEN environment variable */
+  claudeAuthToken?: string;
+}
+
+/**
  * Options for starting idle timeout daemon
  */
 export interface IdleTimeoutDaemonOptions {
