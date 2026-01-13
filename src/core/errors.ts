@@ -33,11 +33,11 @@ export class ProviderNotFoundError extends SudopodError {
 export class DeploymentFailedError extends SudopodError {
   /**
    * Creates a new DeploymentFailedError
-   * @param reason - The reason for deployment failure
-   * @param details - Optional additional details about the failure
+   * @param message - The reason for deployment failure
+   * @param cause - Optional error that caused the deployment failure
    */
-  constructor(reason: string, public details?: any) {
-    super(`Deployment failed: ${reason}`, 'DEPLOYMENT_FAILED');
+  constructor(message: string, public cause?: Error) {
+    super(`Deployment failed: ${message}`, 'DEPLOYMENT_FAILED');
     this.name = 'DeploymentFailedError';
   }
 }
@@ -51,7 +51,7 @@ export class AuthenticationError extends SudopodError {
    * @param provider - The provider where authentication failed
    * @param reason - The reason for authentication failure
    */
-  constructor(provider: string, reason: string) {
+  constructor(public provider: string, reason: string) {
     super(`Authentication failed for ${provider}: ${reason}`, 'AUTH_FAILED');
     this.name = 'AuthenticationError';
   }
@@ -67,7 +67,7 @@ export class ProviderError extends SudopodError {
    * @param operation - The operation that failed
    * @param reason - The reason for the failure
    */
-  constructor(provider: string, operation: string, reason: string) {
+  constructor(public provider: string, public operation: string, reason: string) {
     super(`${provider} ${operation} failed: ${reason}`, 'PROVIDER_ERROR');
     this.name = 'ProviderError';
   }

@@ -33,7 +33,7 @@ cp tests/.env.secrets.example tests/.env.secrets
 
 Edit `tests/.env.secrets` and add your secrets:
 ```
-CLAUDE_AUTH_TOKEN=sk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CLAUDE_AUTH_TOKEN=xxxxx
 ```
 
 Available secrets:
