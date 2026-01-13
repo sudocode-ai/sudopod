@@ -151,7 +151,7 @@ async function runTests() {
 
   const deployError = new sudopod.DeploymentFailedError('deploy failed', new Error('cause'));
   assert(deployError.message.includes('deploy failed'), 'DeploymentFailedError includes message');
-  assert(deployError.cause instanceof Error, 'DeploymentFailedError sets cause');
+  assert(deployError.details instanceof Error, 'DeploymentFailedError sets details');
 
   const providerError = new sudopod.ProviderError('codespaces', 'deploy', 'operation failed');
   assert(providerError.provider === 'codespaces', 'ProviderError sets provider');

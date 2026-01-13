@@ -144,8 +144,8 @@ async function runE2ETest() {
     console.log('');
   } catch (err: any) {
     error(`Deployment failed: ${err.message}`);
-    if (err.cause) {
-      console.log('  Cause:', err.cause.message);
+    if (err.details) {
+      console.log('  Details:', err.details.message);
     }
     process.exit(1);
   }

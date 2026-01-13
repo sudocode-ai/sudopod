@@ -34,9 +34,9 @@ export class DeploymentFailedError extends SudopodError {
   /**
    * Creates a new DeploymentFailedError
    * @param message - The reason for deployment failure
-   * @param cause - Optional error that caused the deployment failure
+   * @param details - Optional details about the deployment failure (can be an Error object or any data)
    */
-  constructor(message: string, public cause?: Error) {
+  constructor(message: string, public details?: any) {
     super(`Deployment failed: ${message}`, 'DEPLOYMENT_FAILED');
     this.name = 'DeploymentFailedError';
   }
