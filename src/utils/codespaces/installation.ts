@@ -56,9 +56,11 @@ export async function installClaudeCode(
 /**
  * Install sudocode packages globally from npm
  *
- * Installs the published sudocode packages from npm registry:
- * - @sudocode-ai/cli - Command-line interface
- * - @sudocode-ai/local-server - Local server for sudocode operations
+ * Installs the sudocode meta-package from npm registry, which includes:
+ * - @sudocode-ai/cli - Command-line interface (provides sudocode, sdc commands)
+ * - @sudocode-ai/local-server - Local server for sudocode operations (provides sudocode-server command)
+ * - @sudocode-ai/mcp - MCP server for tool integration (provides sudocode-mcp command)
+ * - All integration packages (github, beads, openspec, speckit)
  *
  * This is the standard installation method for production use.
  * For development/testing, use `installSudocodeFromLocal()` instead.
@@ -85,7 +87,7 @@ export async function installSudocodeGlobally(
 ): Promise<void> {
   await execInCodespace(
     name,
-    'npm install -g @sudocode-ai/cli @sudocode-ai/local-server',
+    'npm install -g sudocode',
     {
       timeout: 300000, // 5 minutes
       streamOutput: true
