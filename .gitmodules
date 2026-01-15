@@ -4,3 +4,6 @@
 [submodule "refs/coder"]
 	path = refs/coder
 	url = https://github.com/coder/coder
+[submodule "refs/coder-infra"]
+	path = refs/coder-infra
+	url = git@github.com:sudocode-ai/coder-infra.git
