@@ -1,10 +1,10 @@
 /**
- * Validation script for Provider interface
+ * Validation script for Connector interface
  * This file ensures TypeScript strict mode validation passes
  */
 
 import type {
-  Provider,
+  Connector,
   DeployOptions,
   Deployment,
   DeploymentStatus,
@@ -12,28 +12,28 @@ import type {
   ListFilters,
 } from './src/index.js';
 
-// Test that Provider interface has all required methods and properties
-const validateProvider = (provider: Provider): void => {
+// Test that Connector interface has all required methods and properties
+const validateConnector = (connector: Connector): void => {
   // Validate readonly type property
-  const providerType: 'codespaces' | 'coder' = provider.type;
+  const connectorType: 'codespaces' | 'coder' = connector.type;
   
   // Validate deploy method signature
-  const deployTest: (options: DeployOptions) => Promise<Deployment> = provider.deploy;
+  const deployTest: (options: DeployOptions) => Promise<Deployment> = connector.deploy;
   
   // Validate stop method signature
-  const stopTest: (name: string) => Promise<void> = provider.stop;
+  const stopTest: (name: string) => Promise<void> = connector.stop;
   
   // Validate getStatus method signature
-  const getStatusTest: (name: string) => Promise<DeploymentStatus> = provider.getStatus;
+  const getStatusTest: (name: string) => Promise<DeploymentStatus> = connector.getStatus;
   
   // Validate list method signature
-  const listTest: (filters?: ListFilters) => Promise<Deployment[]> = provider.list;
+  const listTest: (filters?: ListFilters) => Promise<Deployment[]> = connector.list;
   
   // Validate getUrls method signature
-  const getUrlsTest: (name: string) => Promise<DeploymentUrls> = provider.getUrls;
+  const getUrlsTest: (name: string) => Promise<DeploymentUrls> = connector.getUrls;
   
-  console.log('✅ Provider interface validation passed');
-  console.log(`   - Provider type: ${providerType}`);
+  console.log('✅ Connector interface validation passed');
+  console.log(`   - Connector type: ${connectorType}`);
   console.log('   - deploy() method: Present');
   console.log('   - stop() method: Present');
   console.log('   - getStatus() method: Present');

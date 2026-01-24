@@ -5,9 +5,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   SudopodError,
-  ProviderNotFoundError,
+  ConnectorNotFoundError,
   DeploymentFailedError,
   AuthenticationError,
+  ConnectorError,
+  // Deprecated aliases
+  ProviderNotFoundError,
   ProviderError,
 } from '../../../src/core/errors.js';
 
@@ -34,22 +37,22 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('ProviderNotFoundError', () => {
-    it('should create error with provider type', () => {
-      const error = new ProviderNotFoundError('invalid-provider');
+  describe('ConnectorNotFoundError', () => {
+    it('should create error with connector type', () => {
+      const error = new ConnectorNotFoundError('invalid-connector');
 
       expect(error).toBeInstanceOf(SudopodError);
-      expect(error).toBeInstanceOf(ProviderNotFoundError);
-      expect(error.message).toBe('Provider not found: invalid-provider');
-      expect(error.code).toBe('PROVIDER_NOT_FOUND');
-      expect(error.name).toBe('ProviderNotFoundError');
+      expect(error).toBeInstanceOf(ConnectorNotFoundError);
+      expect(error.message).toBe('Connector not found: invalid-connector');
+      expect(error.code).toBe('CONNECTOR_NOT_FOUND');
+      expect(error.name).toBe('ConnectorNotFoundError');
     });
 
-    it('should include provider type in message', () => {
-      const error = new ProviderNotFoundError('aws');
+    it('should include connector type in message', () => {
+      const error = new ConnectorNotFoundError('aws');
 
       expect(error.message).toContain('aws');
-      expect(error.message).toBe('Provider not found: aws');
+      expect(error.message).toBe('Connector not found: aws');
     });
   });
 
@@ -115,19 +118,19 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('ProviderError', () => {
-    it('should create error with provider, operation, and reason', () => {
-      const error = new ProviderError('codespaces', 'stop', 'Codespace not found');
+  describe('ConnectorError', () => {
+    it('should create error with connector, operation, and reason', () => {
+      const error = new ConnectorError('codespaces', 'stop', 'Codespace not found');
 
       expect(error).toBeInstanceOf(SudopodError);
-      expect(error).toBeInstanceOf(ProviderError);
+      expect(error).toBeInstanceOf(ConnectorError);
       expect(error.message).toBe('codespaces stop failed: Codespace not found');
-      expect(error.code).toBe('PROVIDER_ERROR');
-      expect(error.name).toBe('ProviderError');
+      expect(error.code).toBe('CONNECTOR_ERROR');
+      expect(error.name).toBe('ConnectorError');
     });
 
     it('should include all components in message', () => {
-      const error = new ProviderError('coder', 'getStatus', 'Workspace not accessible');
+      const error = new ConnectorError('coder', 'getStatus', 'Workspace not accessible');
 
       expect(error.message).toContain('coder');
       expect(error.message).toContain('getStatus');
@@ -136,7 +139,7 @@ describe('Error Classes', () => {
     });
 
     it('should handle list operation errors', () => {
-      const error = new ProviderError('codespaces', 'list', 'API error');
+      const error = new ConnectorError('codespaces', 'list', 'API error');
 
       expect(error.message).toBe('codespaces list failed: API error');
     });
@@ -145,10 +148,10 @@ describe('Error Classes', () => {
   describe('Error inheritance', () => {
     it('should maintain proper inheritance chain', () => {
       const errors = [
-        new ProviderNotFoundError('test'),
+        new ConnectorNotFoundError('test'),
         new DeploymentFailedError('test'),
         new AuthenticationError('test', 'test'),
-        new ProviderError('test', 'test', 'test'),
+        new ConnectorError('test', 'test', 'test'),
       ];
 
       errors.forEach((error) => {
@@ -169,10 +172,10 @@ describe('Error Classes', () => {
 
     it('should allow catching base SudopodError', () => {
       const errors = [
-        new ProviderNotFoundError('test'),
+        new ConnectorNotFoundError('test'),
         new DeploymentFailedError('test'),
         new AuthenticationError('test', 'test'),
-        new ProviderError('test', 'test', 'test'),
+        new ConnectorError('test', 'test', 'test'),
       ];
 
       errors.forEach((error) => {
@@ -188,10 +191,10 @@ describe('Error Classes', () => {
   describe('Error codes', () => {
     it('should have unique error codes', () => {
       const codes = [
-        new ProviderNotFoundError('test').code,
+        new ConnectorNotFoundError('test').code,
         new DeploymentFailedError('test').code,
         new AuthenticationError('test', 'test').code,
-        new ProviderError('test', 'test', 'test').code,
+        new ConnectorError('test', 'test', 'test').code,
       ];
 
       const uniqueCodes = new Set(codes);
@@ -200,15 +203,31 @@ describe('Error Classes', () => {
 
     it('should use consistent code format', () => {
       const errors = [
-        new ProviderNotFoundError('test'),
+        new ConnectorNotFoundError('test'),
         new DeploymentFailedError('test'),
         new AuthenticationError('test', 'test'),
-        new ProviderError('test', 'test', 'test'),
+        new ConnectorError('test', 'test', 'test'),
       ];
 
       errors.forEach((error) => {
         expect(error.code).toMatch(/^[A-Z_]+$/);
       });
+    });
+  });
+
+  describe('Backward compatibility', () => {
+    it('ProviderNotFoundError should be an alias for ConnectorNotFoundError', () => {
+      expect(ProviderNotFoundError).toBe(ConnectorNotFoundError);
+      
+      const error = new ProviderNotFoundError('test');
+      expect(error).toBeInstanceOf(ConnectorNotFoundError);
+    });
+
+    it('ProviderError should be an alias for ConnectorError', () => {
+      expect(ProviderError).toBe(ConnectorError);
+      
+      const error = new ProviderError('codespaces', 'stop', 'test');
+      expect(error).toBeInstanceOf(ConnectorError);
     });
   });
 });

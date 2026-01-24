@@ -91,49 +91,53 @@ async function runTests() {
 
   // Test exports
   info('Validating exports...');
-  assert(typeof sudopod.createProvider === 'function', 'createProvider is exported as function');
+  assert(typeof sudopod.createConnector === 'function', 'createConnector is exported as function');
+  assert(typeof sudopod.createProvider === 'function', 'createProvider (deprecated) is exported as function');
   assert(typeof sudopod.SudopodError === 'function', 'SudopodError is exported');
   assert(typeof sudopod.AuthenticationError === 'function', 'AuthenticationError is exported');
   assert(typeof sudopod.DeploymentFailedError === 'function', 'DeploymentFailedError is exported');
-  assert(typeof sudopod.ProviderError === 'function', 'ProviderError is exported');
-  assert(typeof sudopod.ProviderNotFoundError === 'function', 'ProviderNotFoundError is exported');
+  assert(typeof sudopod.ConnectorError === 'function', 'ConnectorError is exported');
+  assert(typeof sudopod.ConnectorNotFoundError === 'function', 'ConnectorNotFoundError is exported');
+  // Deprecated aliases
+  assert(typeof sudopod.ProviderError === 'function', 'ProviderError (deprecated) is exported');
+  assert(typeof sudopod.ProviderNotFoundError === 'function', 'ProviderNotFoundError (deprecated) is exported');
   console.log('');
 
   // Test factory function
   info('Testing factory function...');
   try {
-    const codespacesProvider = sudopod.createProvider({ type: 'codespaces' });
-    assert(codespacesProvider !== null, 'createProvider returns provider instance');
-    assert(codespacesProvider.type === 'codespaces', 'Provider has correct type');
-    assert(typeof codespacesProvider.deploy === 'function', 'Provider has deploy method');
-    assert(typeof codespacesProvider.stop === 'function', 'Provider has stop method');
-    assert(typeof codespacesProvider.getStatus === 'function', 'Provider has getStatus method');
-    assert(typeof codespacesProvider.list === 'function', 'Provider has list method');
-    assert(typeof codespacesProvider.getUrls === 'function', 'Provider has getUrls method');
+    const codespacesConnector = sudopod.createConnector({ type: 'codespaces' });
+    assert(codespacesConnector !== null, 'createConnector returns connector instance');
+    assert(codespacesConnector.type === 'codespaces', 'Connector has correct type');
+    assert(typeof codespacesConnector.deploy === 'function', 'Connector has deploy method');
+    assert(typeof codespacesConnector.stop === 'function', 'Connector has stop method');
+    assert(typeof codespacesConnector.getStatus === 'function', 'Connector has getStatus method');
+    assert(typeof codespacesConnector.list === 'function', 'Connector has list method');
+    assert(typeof codespacesConnector.getUrls === 'function', 'Connector has getUrls method');
   } catch (err: any) {
-    error(`Failed to create provider: ${err.message}`);
+    error(`Failed to create connector: ${err.message}`);
   }
   console.log('');
 
   // Test error handling
   info('Testing error handling...');
   try {
-    sudopod.createProvider({ type: 'invalid' } as any);
-    error('Should throw error for invalid provider type');
+    sudopod.createConnector({ type: 'invalid' } as any);
+    error('Should throw error for invalid connector type');
   } catch (err: any) {
-    if (err instanceof sudopod.ProviderNotFoundError) {
-      success('Throws ProviderNotFoundError for invalid provider type');
+    if (err instanceof sudopod.ConnectorNotFoundError) {
+      success('Throws ConnectorNotFoundError for invalid connector type');
     } else {
       error(`Wrong error type thrown: ${err.constructor.name}`);
     }
   }
 
   try {
-    const coderProvider = sudopod.createProvider({ type: 'coder', url: 'https://coder.example.com', apiKey: 'test' });
-    // Coder provider is implemented but not functional yet - this is expected
-    assert(coderProvider.type === 'coder', 'Can create Coder provider instance (implementation pending)');
+    const coderConnector = sudopod.createConnector({ type: 'coder', url: 'https://coder.example.com', apiKey: 'test' });
+    // Coder connector is implemented but not functional yet - this is expected
+    assert(coderConnector.type === 'coder', 'Can create Coder connector instance (implementation pending)');
   } catch (err: any) {
-    error(`Failed to create Coder provider: ${err.message}`);
+    error(`Failed to create Coder connector: ${err.message}`);
   }
   console.log('');
 
@@ -153,10 +157,10 @@ async function runTests() {
   assert(deployError.message.includes('deploy failed'), 'DeploymentFailedError includes message');
   assert(deployError.details instanceof Error, 'DeploymentFailedError sets details');
 
-  const providerError = new sudopod.ProviderError('codespaces', 'deploy', 'operation failed');
-  assert(providerError.provider === 'codespaces', 'ProviderError sets provider');
-  assert(providerError.operation === 'deploy', 'ProviderError sets operation');
-  assert(providerError.message.includes('operation failed'), 'ProviderError includes message');
+  const connectorError = new sudopod.ConnectorError('codespaces', 'deploy', 'operation failed');
+  assert(connectorError.connector === 'codespaces', 'ConnectorError sets connector');
+  assert(connectorError.operation === 'deploy', 'ConnectorError sets operation');
+  assert(connectorError.message.includes('operation failed'), 'ConnectorError includes message');
   console.log('');
 
   // Test type definitions
@@ -167,16 +171,16 @@ async function runTests() {
   assert(existsSync(indexTypesPath), 'index.d.ts exists');
   console.log('');
 
-  // Test provider structure validation
-  info('Testing provider structure...');
-  const provider = sudopod.createProvider({ type: 'codespaces' });
+  // Test connector structure validation
+  info('Testing connector structure...');
+  const connector = sudopod.createConnector({ type: 'codespaces' });
   
   // Validate method signatures
-  assert(provider.deploy.length === 1, 'deploy() accepts 1 parameter');
-  assert(provider.stop.length === 1, 'stop() accepts 1 parameter');
-  assert(provider.getStatus.length === 1, 'getStatus() accepts 1 parameter');
-  assert(provider.list.length <= 1, 'list() accepts 0-1 parameters');
-  assert(provider.getUrls.length <= 2, 'getUrls() accepts 1-2 parameters');
+  assert(connector.deploy.length === 1, 'deploy() accepts 1 parameter');
+  assert(connector.stop.length === 1, 'stop() accepts 1 parameter');
+  assert(connector.getStatus.length === 1, 'getStatus() accepts 1 parameter');
+  assert(connector.list.length <= 1, 'list() accepts 0-1 parameters');
+  assert(connector.getUrls.length <= 2, 'getUrls() accepts 1-2 parameters');
   console.log('');
 
   // Summary

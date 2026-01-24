@@ -1,12 +1,12 @@
 /**
- * Unit tests for Codespaces provider
- * Tests the Provider interface implementation with mocked primitives
+ * Unit tests for Codespaces connector
+ * Tests the Connector interface implementation with mocked primitives
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CodespacesProvider } from '../../../src/providers/codespaces.js';
+import { CodespacesConnector } from '../../../src/connectors/codespaces.js';
 import type { CodespacesConfig, DeployOptions, Deployment, DeploymentStatus } from '../../../src/types.js';
-import { ProviderError, AuthenticationError, DeploymentFailedError } from '../../../src/core/errors.js';
+import { ConnectorError, AuthenticationError, DeploymentFailedError } from '../../../src/core/errors.js';
 import {
   minimalCodespacesOptions,
   completeCodespacesOptions,
@@ -45,56 +45,56 @@ vi.mock('../../../src/utils/codespaces/keepalive.js', () => ({
   startIdleTimeoutDaemon: vi.fn(),
 }));
 
-describe('CodespacesProvider', () => {
-  let provider: CodespacesProvider;
+describe('CodespacesConnector', () => {
+  let connector: CodespacesConnector;
   const config: CodespacesConfig = { type: 'codespaces' };
 
   beforeEach(() => {
-    provider = new CodespacesProvider(config);
+    connector = new CodespacesConnector(config);
     vi.clearAllMocks();
   });
 
   describe('constructor', () => {
-    it('should create provider with correct type', () => {
-      expect(provider.type).toBe('codespaces');
+    it('should create connector with correct type', () => {
+      expect(connector.type).toBe('codespaces');
     });
   });
 
   describe('mapStatus', () => {
     it('should map Available to running', () => {
-      const mapStatus = (provider as any).mapStatus.bind(provider);
+      const mapStatus = (connector as any).mapStatus.bind(connector);
       expect(mapStatus('Available')).toBe('running');
     });
 
     it('should map Starting to starting', () => {
-      const mapStatus = (provider as any).mapStatus.bind(provider);
+      const mapStatus = (connector as any).mapStatus.bind(connector);
       expect(mapStatus('Starting')).toBe('starting');
     });
 
     it('should map Shutdown to stopped', () => {
-      const mapStatus = (provider as any).mapStatus.bind(provider);
+      const mapStatus = (connector as any).mapStatus.bind(connector);
       expect(mapStatus('Shutdown')).toBe('stopped');
     });
 
     it('should map Unavailable to stopped', () => {
-      const mapStatus = (provider as any).mapStatus.bind(provider);
+      const mapStatus = (connector as any).mapStatus.bind(connector);
       expect(mapStatus('Unavailable')).toBe('stopped');
     });
 
     it('should map Pending to provisioning', () => {
-      const mapStatus = (provider as any).mapStatus.bind(provider);
+      const mapStatus = (connector as any).mapStatus.bind(connector);
       expect(mapStatus('Pending')).toBe('provisioning');
     });
 
     it('should map unknown status to failed', () => {
-      const mapStatus = (provider as any).mapStatus.bind(provider);
+      const mapStatus = (connector as any).mapStatus.bind(connector);
       expect(mapStatus('UnknownStatus')).toBe('failed');
     });
   });
 
   describe('mapToDeployment', () => {
     it('should map codespace data to Deployment with git structure', () => {
-      const mapToDeployment = (provider as any).mapToDeployment.bind(provider);
+      const mapToDeployment = (connector as any).mapToDeployment.bind(connector);
       
       const codespaceData = {
         name: 'test-codespace-abc123',
@@ -128,7 +128,7 @@ describe('CodespacesProvider', () => {
     });
 
     it('should handle repository string without branch', () => {
-      const mapToDeployment = (provider as any).mapToDeployment.bind(provider);
+      const mapToDeployment = (connector as any).mapToDeployment.bind(connector);
       
       const codespaceData = {
         name: 'test-codespace',
@@ -149,7 +149,7 @@ describe('CodespacesProvider', () => {
     });
 
     it('should handle missing optional fields with defaults', () => {
-      const mapToDeployment = (provider as any).mapToDeployment.bind(provider);
+      const mapToDeployment = (connector as any).mapToDeployment.bind(connector);
       
       const codespaceData = {
         name: 'test-codespace',
@@ -171,20 +171,20 @@ describe('CodespacesProvider', () => {
       const { deleteCodespace } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(deleteCodespace).mockResolvedValueOnce();
 
-      await provider.stop('test-codespace');
+      await connector.stop('test-codespace');
 
       expect(deleteCodespace).toHaveBeenCalledWith('test-codespace');
     });
 
-    it('should throw ProviderError on failure', async () => {
+    it('should throw ConnectorError on failure', async () => {
       const { deleteCodespace } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(deleteCodespace).mockRejectedValue(new Error('Delete failed'));
 
       try {
-        await provider.stop('test-codespace');
-        expect.fail('Should have thrown ProviderError');
+        await connector.stop('test-codespace');
+        expect.fail('Should have thrown ConnectorError');
       } catch (error: any) {
-        expect(error).toBeInstanceOf(ProviderError);
+        expect(error).toBeInstanceOf(ConnectorError);
         expect(error.message).toContain('Delete failed');
       }
       
@@ -205,7 +205,7 @@ describe('CodespacesProvider', () => {
         machine: 'basicLinux32gb',
       });
 
-      const status = await provider.getStatus('test-codespace');
+      const status = await connector.getStatus('test-codespace');
 
       expect(status).toBe('running');
       expect(getCodespaceInfo).toHaveBeenCalledWith('test-codespace');
@@ -222,16 +222,16 @@ describe('CodespacesProvider', () => {
         machine: 'basicLinux32gb',
       });
 
-      const status = await provider.getStatus('test-codespace');
+      const status = await connector.getStatus('test-codespace');
 
       expect(status).toBe('starting');
     });
 
-    it('should throw ProviderError on failure', async () => {
+    it('should throw ConnectorError on failure', async () => {
       const { getCodespaceInfo } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(getCodespaceInfo).mockRejectedValueOnce(new Error('Not found'));
 
-      await expect(provider.getStatus('test-codespace')).rejects.toThrow(ProviderError);
+      await expect(connector.getStatus('test-codespace')).rejects.toThrow(ConnectorError);
     });
   });
 
@@ -261,7 +261,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list();
+      const deployments = await connector.list();
 
       expect(deployments).toHaveLength(2);
       expect(deployments[0].git.owner).toBe('anthropics');
@@ -274,7 +274,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list({ status: ['running'] });
+      const deployments = await connector.list({ status: ['running'] });
 
       expect(deployments).toHaveLength(1);
       expect(deployments[0].name).toBe('codespace-1');
@@ -285,7 +285,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list({ owner: 'anthropics' });
+      const deployments = await connector.list({ owner: 'anthropics' });
 
       expect(deployments).toHaveLength(1);
       expect(deployments[0].git.owner).toBe('anthropics');
@@ -295,7 +295,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list({ repo: 'sudocode' });
+      const deployments = await connector.list({ repo: 'sudocode' });
 
       expect(deployments).toHaveLength(1);
       expect(deployments[0].git.repo).toBe('sudocode');
@@ -305,7 +305,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list({ createdAfter: '2025-01-08T12:00:00Z' });
+      const deployments = await connector.list({ createdAfter: '2025-01-08T12:00:00Z' });
 
       expect(deployments).toHaveLength(1);
       expect(deployments[0].name).toBe('codespace-2');
@@ -315,7 +315,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list({ createdBefore: '2025-01-08T12:00:00Z' });
+      const deployments = await connector.list({ createdBefore: '2025-01-08T12:00:00Z' });
 
       expect(deployments).toHaveLength(1);
       expect(deployments[0].name).toBe('codespace-1');
@@ -325,7 +325,7 @@ describe('CodespacesProvider', () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockResolvedValueOnce(mockCodespaces);
 
-      const deployments = await provider.list({
+      const deployments = await connector.list({
         status: ['stopped'],
         owner: 'myorg',
       });
@@ -336,11 +336,11 @@ describe('CodespacesProvider', () => {
       expect(deployments[0].git.owner).toBe('myorg');
     });
 
-    it('should throw ProviderError on failure', async () => {
+    it('should throw ConnectorError on failure', async () => {
       const { listCodespaces } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(listCodespaces).mockRejectedValueOnce(new Error('API error'));
 
-      await expect(provider.list()).rejects.toThrow(ProviderError);
+      await expect(connector.list()).rejects.toThrow(ConnectorError);
     });
   });
 
@@ -359,7 +359,7 @@ describe('CodespacesProvider', () => {
       const { getCodespacePortUrl } = await import('../../../src/utils/codespaces/ports.js');
       vi.mocked(getCodespacePortUrl).mockResolvedValueOnce('https://test-codespace-3000.app.github.dev');
 
-      const urls = await provider.getUrls('test-codespace', 3000);
+      const urls = await connector.getUrls('test-codespace', 3000);
 
       expect(urls.workspace).toBe('https://test-codespace.github.dev');
       expect(urls.sudocode).toBe('https://test-codespace-3000.app.github.dev');
@@ -380,7 +380,7 @@ describe('CodespacesProvider', () => {
       const { getCodespacePortUrl } = await import('../../../src/utils/codespaces/ports.js');
       vi.mocked(getCodespacePortUrl).mockResolvedValueOnce('https://test-codespace-3000.app.github.dev');
 
-      const urls = await provider.getUrls('test-codespace');
+      const urls = await connector.getUrls('test-codespace');
 
       expect(getCodespacePortUrl).toHaveBeenCalledWith('test-codespace', 3000);
     });
@@ -392,7 +392,7 @@ describe('CodespacesProvider', () => {
       vi.mocked(checkGhCliInstalled).mockResolvedValue(undefined);
       vi.mocked(checkGhAuthenticated).mockResolvedValue(undefined);
 
-      const checkPrerequisites = (provider as any).checkPrerequisites.bind(provider);
+      const checkPrerequisites = (connector as any).checkPrerequisites.bind(connector);
       await expect(checkPrerequisites()).resolves.toBeUndefined();
       
       // Clean up
@@ -404,7 +404,7 @@ describe('CodespacesProvider', () => {
       const { checkGhCliInstalled } = await import('../../../src/utils/codespaces/management.js');
       vi.mocked(checkGhCliInstalled).mockRejectedValue(new Error('Not found'));
 
-      const checkPrerequisites = (provider as any).checkPrerequisites.bind(provider);
+      const checkPrerequisites = (connector as any).checkPrerequisites.bind(connector);
       
       try {
         await checkPrerequisites();
@@ -423,7 +423,7 @@ describe('CodespacesProvider', () => {
       vi.mocked(checkGhCliInstalled).mockResolvedValue(undefined);
       vi.mocked(checkGhAuthenticated).mockRejectedValue(new Error('Not authenticated'));
 
-      const checkPrerequisites = (provider as any).checkPrerequisites.bind(provider);
+      const checkPrerequisites = (connector as any).checkPrerequisites.bind(connector);
       
       try {
         await checkPrerequisites();
@@ -490,7 +490,7 @@ describe('CodespacesProvider', () => {
         }
       };
 
-      await provider.deploy(options);
+      await connector.deploy(options);
 
       // Verify startSudocodeServer was called with claudeAuthToken option
       expect(startSudocodeServer).toHaveBeenCalledWith(
@@ -511,7 +511,7 @@ describe('CodespacesProvider', () => {
         models: undefined
       };
 
-      await provider.deploy(options);
+      await connector.deploy(options);
 
       // Verify startSudocodeServer was called without claudeAuthToken
       expect(startSudocodeServer).toHaveBeenCalledWith(
@@ -537,7 +537,7 @@ describe('CodespacesProvider', () => {
         }
       };
 
-      await provider.deploy(options);
+      await connector.deploy(options);
 
       // Verify startSudocodeServer was called without claudeAuthToken
       expect(startSudocodeServer).toHaveBeenCalledWith(
@@ -559,7 +559,7 @@ describe('CodespacesProvider', () => {
         }
       };
 
-      const deployment = await provider.deploy(options);
+      const deployment = await connector.deploy(options);
 
       // Verify deployment structure
       expect(deployment.id).toBe('test-codespace-abc123');
@@ -572,5 +572,12 @@ describe('CodespacesProvider', () => {
         branch: 'main',
       });
     });
+  });
+});
+
+describe('Backward compatibility', () => {
+  it('should export CodespacesProvider as alias', async () => {
+    const { CodespacesProvider, CodespacesConnector } = await import('../../../src/connectors/codespaces.js');
+    expect(CodespacesProvider).toBe(CodespacesConnector);
   });
 });

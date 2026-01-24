@@ -3,12 +3,17 @@
  */
 
 /**
- * Provider configuration (union type for extensibility)
+ * Connector configuration (union type for extensibility)
  */
-export type ProviderConfig = CodespacesConfig | CoderConfig;
+export type ConnectorConfig = CodespacesConfig | CoderConfig;
 
 /**
- * Codespaces provider configuration
+ * @deprecated Use ConnectorConfig instead
+ */
+export type ProviderConfig = ConnectorConfig;
+
+/**
+ * Codespaces connector configuration
  */
 export interface CodespacesConfig {
   type: 'codespaces';
@@ -16,7 +21,7 @@ export interface CodespacesConfig {
 }
 
 /**
- * Coder provider configuration
+ * Coder connector configuration
  */
 export interface CoderConfig {
   type: 'coder';

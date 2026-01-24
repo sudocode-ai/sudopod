@@ -7,14 +7,14 @@
 ### Key Principles
 
 1. **Stateless**: Sudopod does not track deployments. Consumers (sudocode CLI, sudocode-hub) handle persistence.
-2. **Provider-agnostic**: Common interface abstracts provider differences.
+2. **Connector-agnostic**: Common interface abstracts connector differences.
 3. **Library-only**: No CLI binary - meant to be consumed as a library.
-4. **Extensible**: Easy to add new providers via provider interface.
+4. **Extensible**: Easy to add new connectors via connector interface.
 
 ### Package Name
 
 - NPM package: `sudopod` (available on npm)
-- Import: `import { createProvider } from 'sudopod'`
+- Import: `import { createConnector } from 'sudopod'`
 
 ---
 
@@ -23,12 +23,12 @@
 ### Consumers
 
 1. **sudocode CLI** (standalone)
-   - Uses codespaces provider directly
+   - Uses codespaces connector directly
    - Tracks deployments in `~/.config/sudocode/deployments.json`
    - Uses GitHub CLI for authentication
 
 2. **sudocode-hub** (hosted)
-   - Uses coder provider for multi-tenant deployments
+   - Uses coder connector for multi-tenant deployments
    - Tracks deployments in hub database
    - Handles user authentication (Google OAuth, enterprise SSO)
    - Provides Coder API keys to sudopod
@@ -50,19 +50,19 @@
 
 ## Core Interface
 
-### Provider Factory
+### Connector Factory
 
 ```typescript
 /**
- * Factory function to create a provider instance
- * Provider handles all authentication and state internally
+ * Factory function to create a connector instance
+ * Connector handles all authentication and state internally
  */
-export function createProvider(config: ProviderConfig): Provider;
+export function createConnector(config: ConnectorConfig): Connector;
 
 /**
- * Provider configuration (union type for extensibility)
+ * Connector configuration (union type for extensibility)
  */
-export type ProviderConfig = CodespacesConfig | CoderConfig;
+export type ConnectorConfig = CodespacesConfig | CoderConfig;
 
 export interface CodespacesConfig {
   type: 'codespaces';
@@ -76,13 +76,13 @@ export interface CoderConfig {
 }
 ```
 
-### Provider Interface
+### Connector Interface
 
 ```typescript
 /**
- * Provider interface - stateless operations
+ * Connector interface - stateless operations
  */
-export interface Provider {
+export interface Connector {
   readonly type: 'codespaces' | 'coder';
 
   /**
@@ -242,15 +242,15 @@ export interface ListFilters {
 ```typescript
 // cli/src/deploy/remote.ts
 
-import { createProvider, type Deployment } from 'sudopod';
+import { createConnector, type Deployment } from 'sudopod';
 import { addDeployment } from './config/deployments.js';
 
 export async function deployRemote(options: DeployOptions) {
-  // Create codespaces provider (uses gh CLI auth)
-  const provider = createProvider({ type: 'codespaces' });
+  // Create codespaces connector (uses gh CLI auth)
+  const connector = createConnector({ type: 'codespaces' });
 
   // Deploy
-  const deployment = await provider.deploy({
+  const deployment = await connector.deploy({
     repository: await getCurrentRepo(),
     branch: options.branch,
     dev: options.dev,        // Enable dev mode for local builds
@@ -281,27 +281,27 @@ export async function deployRemote(options: DeployOptions) {
 }
 ```
 
-### 2. sudocode-hub (using coder provider)
+### 2. sudocode-hub (using coder connector)
 
 ```typescript
 // sudocode-hub/src/api/deploy.ts
 
-import { createProvider } from 'sudopod';
+import { createConnector } from 'sudopod';
 import { getUserCoderCredentials } from './auth.js';
 
 export async function handleDeploy(req: Request, userId: string) {
   // Get user's Coder credentials from hub database
   const coderCreds = await getUserCoderCredentials(userId);
 
-  // Create coder provider
-  const provider = createProvider({
+  // Create coder connector
+  const connector = createConnector({
     type: 'coder',
     url: process.env.CODER_URL!,
     apiKey: coderCreds.apiKey
   });
 
   // Deploy
-  const deployment = await provider.deploy({
+  const deployment = await connector.deploy({
     repository: req.body.repository,
     branch: req.body.branch,
     sudocode: {
@@ -334,7 +334,7 @@ export async function handleDeploy(req: Request, userId: string) {
 ```typescript
 // cli/src/deploy/list.ts
 
-import { createProvider } from 'sudopod';
+import { createConnector } from 'sudopod';
 import { listDeployments } from './config/deployments.js';
 
 export async function listDeploymentsCommand() {
@@ -342,8 +342,8 @@ export async function listDeploymentsCommand() {
   const tracked = await listDeployments();
 
   // Query GitHub for current status
-  const provider = createProvider({ type: 'codespaces' });
-  const live = await provider.list();
+  const connector = createConnector({ type: 'codespaces' });
+  const live = await connector.list();
 
   // Merge tracked with live status
   const merged = tracked.map(local => {
@@ -368,18 +368,11 @@ sudopod/
 │   ├── index.ts                      # Main exports
 │   ├── types.ts                      # Core types
 │   ├── core/
-│   │   ├── provider.ts               # Provider interface
+│   │   ├── connector.ts              # Connector interface
 │   │   └── errors.ts                 # Error types
-│   ├── providers/
-│   │   ├── codespaces/
-│   │   │   ├── index.ts              # CodespacesProvider class
-│   │   │   ├── gh-cli.ts             # GitHub CLI wrapper
-│   │   │   ├── setup.ts              # Installation logic
-│   │   │   └── ssh.ts                # SSH operations
-│   │   └── coder/
-│   │       ├── index.ts              # CoderProvider class
-│   │       ├── api.ts                # Coder API client
-│   │       └── setup.ts              # Installation logic
+│   ├── connectors/
+│   │   ├── codespaces.ts             # CodespacesConnector class
+│   │   └── coder.ts                  # CoderConnector class
 │   └── utils/
 │       ├── retry.ts                  # Retry logic
 │       └── validation.ts             # Input validation
@@ -401,24 +394,24 @@ sudopod/
 
 2. **Define interfaces**
    - Create `sudopod/src/types.ts` with all interface definitions
-   - Create `sudopod/src/core/provider.ts` with Provider interface
+   - Create `sudopod/src/core/connector.ts` with Connector interface
    - Create `sudopod/src/index.ts` with main exports
 
-### Phase 2: Extract codespaces provider
+### Phase 2: Extract codespaces connector
 
 3. **Move existing code**
-   - Move `cli/src/deploy/utils/gh-cli.ts` → `sudopod/src/providers/codespaces/gh-cli.ts`
-   - Move `cli/src/deploy/utils/codespace-ssh.ts` → `sudopod/src/providers/codespaces/ssh.ts`
-   - Move `cli/src/deploy/utils/codespace-setup.ts` → `sudopod/src/providers/codespaces/setup.ts`
+   - Move `cli/src/deploy/utils/gh-cli.ts` → `sudopod/src/utils/codespaces/gh-cli.ts`
+   - Move `cli/src/deploy/utils/codespace-ssh.ts` → `sudopod/src/utils/codespaces/ssh.ts`
+   - Move `cli/src/deploy/utils/codespace-setup.ts` → `sudopod/src/utils/codespaces/setup.ts`
 
-4. **Implement CodespacesProvider**
-   - Create `sudopod/src/providers/codespaces/index.ts`
-   - Refactor `cli/src/deploy/codespaces.ts` logic into Provider interface
+4. **Implement CodespacesConnector**
+   - Create `sudopod/src/connectors/codespaces.ts`
+   - Refactor `cli/src/deploy/codespaces.ts` logic into Connector interface
    - Implement `deploy()`, `stop()`, `getStatus()`, `list()`, `getUrls()`
 
 5. **Implement factory**
-   - Create `createProvider()` in `sudopod/src/index.ts`
-   - Register codespaces provider
+   - Create `createConnector()` in `sudopod/src/index.ts`
+   - Register codespaces connector
 
 ### Phase 3: Update CLI to use sudopod
 
@@ -435,26 +428,26 @@ sudopod/
    - Delete moved files from `cli/src/deploy/utils/`
    - Update exports in `cli/src/deploy/index.ts`
 
-### Phase 4: Add coder provider (future)
+### Phase 4: Add coder connector (future)
 
-9. **Implement CoderProvider**
-   - Create `sudopod/src/providers/coder/index.ts`
+9. **Implement CoderConnector**
+   - Create `sudopod/src/connectors/coder.ts`
    - Create Coder API client
-   - Implement Provider interface
+   - Implement Connector interface
 
-10. **Register provider**
-    - Add coder to factory in `createProvider()`
+10. **Register connector**
+    - Add coder to factory in `createConnector()`
 
 ---
 
 ## Authentication Models
 
-### Codespaces Provider
+### Codespaces Connector
 - **Authentication**: Uses GitHub CLI (`gh`) which manages its own auth
 - **Prerequisites**: User must run `gh auth login` before using
 - **No API keys**: All auth handled by gh CLI
 
-### Coder Provider
+### Coder Connector
 - **Authentication**: API key-based
 - **sudocode CLI**: User stores Coder API key in `~/.config/sudocode/user_credentials.json`
 - **sudocode-hub**: Hub database stores user-specific Coder API keys
@@ -464,13 +457,13 @@ sudopod/
 
 ## Configuration Philosophy
 
-### Top-Level Parameters (Provider-Agnostic)
-These parameters are part of the core `Deployment` interface, NOT provider-specific metadata:
+### Top-Level Parameters (Connector-Agnostic)
+These parameters are part of the core `Deployment` interface, NOT connector-specific metadata:
 - `server.keepAliveHours`: How long to keep VM alive before complete shutdown
 - `server.idleTimeout`: Idle timeout before pausing VM (cost savings)
 - `server.port`: Server port
 
-### Provider Behavior
+### Connector Behavior
 - **Codespaces**:
   - `keepAliveHours`: HONORED - controls when VM shuts down completely
   - `idleTimeout`: IGNORED - GitHub doesn't reliably auto-resume processes/ports, so we bypass pause with keepalive mechanism
@@ -478,9 +471,9 @@ These parameters are part of the core `Deployment` interface, NOT provider-speci
   - Both `keepAliveHours` and `idleTimeout`: HONORED and fully configurable (can reliably pause/resume)
 
 ### Rationale
-- Users shouldn't need to know provider-specific constraints upfront
-- Interface stays clean and provider-agnostic
-- Providers internally map/ignore parameters as needed
+- Users shouldn't need to know connector-specific constraints upfront
+- Interface stays clean and connector-agnostic
+- Connectors internally map/ignore parameters as needed
 - Deployment object exposes actual values used for transparency
 
 ---
@@ -497,9 +490,9 @@ export class SudopodError extends Error {
   }
 }
 
-export class ProviderNotFoundError extends SudopodError {
+export class ConnectorNotFoundError extends SudopodError {
   constructor(type: string) {
-    super(`Provider not found: ${type}`, 'PROVIDER_NOT_FOUND');
+    super(`Connector not found: ${type}`, 'CONNECTOR_NOT_FOUND');
   }
 }
 
@@ -510,8 +503,8 @@ export class DeploymentFailedError extends SudopodError {
 }
 
 export class AuthenticationError extends SudopodError {
-  constructor(provider: string, reason: string) {
-    super(`Authentication failed for ${provider}: ${reason}`, 'AUTH_FAILED');
+  constructor(connector: string, reason: string) {
+    super(`Authentication failed for ${connector}: ${reason}`, 'AUTH_FAILED');
   }
 }
 ```
@@ -523,6 +516,6 @@ export class AuthenticationError extends SudopodError {
 1. Review and approve this design
 2. Create GitHub issue or spec for implementation
 3. Begin Phase 1: Create sudopod package structure
-4. Implement codespaces provider extraction
+4. Implement codespaces connector extraction
 5. Update CLI to consume sudopod
-6. Document provider interface for future Coder implementation
+6. Document connector interface for future Coder implementation

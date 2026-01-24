@@ -1,52 +1,55 @@
 /**
- * Provider factory function
+ * Connector factory function
  */
 
-import type { ProviderConfig, CodespacesConfig, CoderConfig } from '../types.js';
-import type { Provider } from './provider.js';
-import { ProviderNotFoundError } from './errors.js';
+import type { ConnectorConfig, CodespacesConfig, CoderConfig } from '../types.js';
+import type { Connector } from './connector.js';
+import { ConnectorNotFoundError } from './errors.js';
 
-// Placeholder provider implementations (will be implemented in later issues)
-import { CodespacesProvider } from '../providers/codespaces.js';
-import { CoderProvider } from '../providers/coder.js';
+// Connector implementations
+import { CodespacesConnector } from '../connectors/codespaces.js';
+import { CoderConnector } from '../connectors/coder.js';
 
 /**
- * Creates a provider instance based on the provided configuration.
+ * Creates a connector instance based on the provided configuration.
  * 
- * This is the main entry point for creating provider instances. The factory
- * automatically instantiates the appropriate provider type based on the
+ * This is the main entry point for creating connector instances. The factory
+ * automatically instantiates the appropriate connector type based on the
  * configuration's type field.
  * 
- * @param config - Provider configuration specifying type and provider-specific settings
- * @returns A Provider instance configured for the specified provider type
- * @throws {ProviderNotFoundError} If the provider type is not supported
+ * Note: Connectors are CLI-side adapters that route requests to providers.
+ * See s-1u2m for the distinction between Connectors and Providers.
+ * 
+ * @param config - Connector configuration specifying type and connector-specific settings
+ * @returns A Connector instance configured for the specified connector type
+ * @throws {ConnectorNotFoundError} If the connector type is not supported
  * 
  * @example
  * ```typescript
- * // Create a Codespaces provider
- * const provider = createProvider({
+ * // Create a Codespaces connector
+ * const connector = createConnector({
  *   type: 'codespaces'
  * });
  * 
- * // Create a Coder provider
- * const provider = createProvider({
+ * // Create a Coder connector
+ * const connector = createConnector({
  *   type: 'coder',
  *   url: 'https://coder.example.com',
  *   apiKey: 'your-api-key'
  * });
  * ```
  */
-export function createProvider(config: ProviderConfig): Provider {
+export function createConnector(config: ConnectorConfig): Connector {
   switch (config.type) {
     case 'codespaces':
-      return new CodespacesProvider(config);
+      return new CodespacesConnector(config);
     
     case 'coder':
-      return new CoderProvider(config);
+      return new CoderConnector(config);
     
     default:
       // Type narrowing exhaustiveness check
       const unknownType = (config as { type: string }).type;
-      throw new ProviderNotFoundError(unknownType);
+      throw new ConnectorNotFoundError(unknownType);
   }
 }

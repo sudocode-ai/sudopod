@@ -1,63 +1,63 @@
 /**
- * Manual verification script for createProvider factory function
+ * Manual verification script for createConnector factory function
  * This script validates that the factory meets all acceptance criteria
  */
 
-import { createProvider } from './src/core/factory.js';
-import { ProviderNotFoundError } from './src/core/errors.js';
+import { createConnector } from './src/core/factory.js';
+import { ConnectorNotFoundError } from './src/core/errors.js';
 import type { CodespacesConfig, CoderConfig } from './src/types.js';
 
-console.log('Testing createProvider factory function...\n');
+console.log('Testing createConnector factory function...\n');
 
-// Test 1: Factory returns CodespacesProvider for codespaces config
+// Test 1: Factory returns CodespacesConnector for codespaces config
 try {
-  console.log('Test 1: Creating CodespacesProvider...');
+  console.log('Test 1: Creating CodespacesConnector...');
   const codespacesConfig: CodespacesConfig = { type: 'codespaces' };
-  const codespacesProvider = createProvider(codespacesConfig);
+  const codespacesConnector = createConnector(codespacesConfig);
   
-  if (codespacesProvider.type === 'codespaces') {
-    console.log('✓ CodespacesProvider created successfully');
-    console.log(`  Provider type: ${codespacesProvider.type}`);
+  if (codespacesConnector.type === 'codespaces') {
+    console.log('✓ CodespacesConnector created successfully');
+    console.log(`  Connector type: ${codespacesConnector.type}`);
   } else {
-    console.log('✗ Wrong provider type returned');
+    console.log('✗ Wrong connector type returned');
   }
 } catch (error) {
-  console.log('✗ Failed to create CodespacesProvider:', error);
+  console.log('✗ Failed to create CodespacesConnector:', error);
 }
 
 console.log();
 
-// Test 2: Factory returns CoderProvider for coder config
+// Test 2: Factory returns CoderConnector for coder config
 try {
-  console.log('Test 2: Creating CoderProvider...');
+  console.log('Test 2: Creating CoderConnector...');
   const coderConfig: CoderConfig = {
     type: 'coder',
     url: 'https://coder.example.com',
     apiKey: 'test-api-key'
   };
-  const coderProvider = createProvider(coderConfig);
+  const coderConnector = createConnector(coderConfig);
   
-  if (coderProvider.type === 'coder') {
-    console.log('✓ CoderProvider created successfully');
-    console.log(`  Provider type: ${coderProvider.type}`);
+  if (coderConnector.type === 'coder') {
+    console.log('✓ CoderConnector created successfully');
+    console.log(`  Connector type: ${coderConnector.type}`);
   } else {
-    console.log('✗ Wrong provider type returned');
+    console.log('✗ Wrong connector type returned');
   }
 } catch (error) {
-  console.log('✗ Failed to create CoderProvider:', error);
+  console.log('✗ Failed to create CoderConnector:', error);
 }
 
 console.log();
 
-// Test 3: Throws ProviderNotFoundError for invalid type
+// Test 3: Throws ConnectorNotFoundError for invalid type
 try {
-  console.log('Test 3: Testing invalid provider type...');
-  const invalidConfig = { type: 'invalid-provider' } as any;
-  createProvider(invalidConfig);
-  console.log('✗ Should have thrown ProviderNotFoundError');
+  console.log('Test 3: Testing invalid connector type...');
+  const invalidConfig = { type: 'invalid-connector' } as any;
+  createConnector(invalidConfig);
+  console.log('✗ Should have thrown ConnectorNotFoundError');
 } catch (error) {
-  if (error instanceof ProviderNotFoundError) {
-    console.log('✓ ProviderNotFoundError thrown correctly');
+  if (error instanceof ConnectorNotFoundError) {
+    console.log('✓ ConnectorNotFoundError thrown correctly');
     console.log(`  Error message: ${error.message}`);
     console.log(`  Error code: ${error.code}`);
   } else {
@@ -70,9 +70,14 @@ console.log();
 // Test 4: Function is exported as main package export
 console.log('Test 4: Checking package exports...');
 try {
-  const { createProvider: exportedFactory } = await import('./src/index.js');
+  const { createConnector: exportedFactory, createProvider } = await import('./src/index.js');
   if (typeof exportedFactory === 'function') {
-    console.log('✓ createProvider is exported from main package');
+    console.log('✓ createConnector is exported from main package');
+  } else {
+    console.log('✗ createConnector is not properly exported');
+  }
+  if (typeof createProvider === 'function') {
+    console.log('✓ createProvider (deprecated alias) is exported from main package');
   } else {
     console.log('✗ createProvider is not properly exported');
   }

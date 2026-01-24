@@ -1,5 +1,5 @@
 /**
- * Provider interface definition
+ * Connector interface definition
  */
 
 import type {
@@ -11,11 +11,14 @@ import type {
 } from '../types.js';
 
 /**
- * Provider interface - stateless operations for managing remote environments
- * All methods query the provider's API in real-time (no local state)
+ * Connector interface - stateless operations for managing remote environments
+ * All methods query the connector's API in real-time (no local state)
+ * 
+ * Note: Connectors are CLI-side adapters that route requests to providers.
+ * See s-1u2m for the distinction between Connectors and Providers.
  */
-export interface Provider {
-  /** Provider type identifier */
+export interface Connector {
+  /** Connector type identifier */
   readonly type: 'codespaces' | 'coder';
 
   /**
@@ -33,23 +36,23 @@ export interface Provider {
    * Stop and delete an environment
    *
    * @param name - Environment name to stop
-   * @throws ProviderError if stop operation fails
+   * @throws ConnectorError if stop operation fails
    */
   stop(name: string): Promise<void>;
 
   /**
    * Get current status of an environment
-   * Queries provider API in real-time
+   * Queries connector API in real-time
    *
    * @param name - Environment name to query
    * @returns Current status information
-   * @throws ProviderError if environment not found
+   * @throws ConnectorError if environment not found
    */
   getStatus(name: string): Promise<DeploymentStatus>;
 
   /**
-   * List all environments from provider
-   * Queries provider API in real-time (not local tracking)
+   * List all environments from connector
+   * Queries connector API in real-time (not local tracking)
    *
    * @param filters - Optional filters for listing
    * @returns Array of deployments matching filters
@@ -62,7 +65,7 @@ export interface Provider {
    *
    * @param name - Environment name
    * @returns URLs for accessing the environment
-   * @throws ProviderError if environment not found
+   * @throws ConnectorError if environment not found
    */
   getUrls(name: string): Promise<DeploymentUrls>;
 }

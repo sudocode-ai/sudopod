@@ -1,77 +1,77 @@
 /**
- * Unit tests for Provider factory function
+ * Unit tests for Connector factory function
  */
 
 import { describe, it, expect } from 'vitest';
-import { createProvider } from '../../../src/core/factory.js';
-import { ProviderNotFoundError } from '../../../src/core/errors.js';
-import { CodespacesProvider } from '../../../src/providers/codespaces.js';
-import { CoderProvider } from '../../../src/providers/coder.js';
+import { createConnector } from '../../../src/core/factory.js';
+import { ConnectorNotFoundError } from '../../../src/core/errors.js';
+import { CodespacesConnector } from '../../../src/connectors/codespaces.js';
+import { CoderConnector } from '../../../src/connectors/coder.js';
 import type { CodespacesConfig, CoderConfig } from '../../../src/types.js';
 
-describe('createProvider', () => {
-  describe('Codespaces provider', () => {
-    it('should create a CodespacesProvider instance', () => {
+describe('createConnector', () => {
+  describe('Codespaces connector', () => {
+    it('should create a CodespacesConnector instance', () => {
       const config: CodespacesConfig = {
         type: 'codespaces',
       };
 
-      const provider = createProvider(config);
+      const connector = createConnector(config);
 
-      expect(provider).toBeInstanceOf(CodespacesProvider);
-      expect(provider.type).toBe('codespaces');
+      expect(connector).toBeInstanceOf(CodespacesConnector);
+      expect(connector.type).toBe('codespaces');
     });
   });
 
-  describe('Coder provider', () => {
-    it('should create a CoderProvider instance', () => {
+  describe('Coder connector', () => {
+    it('should create a CoderConnector instance', () => {
       const config: CoderConfig = {
         type: 'coder',
         url: 'https://coder.example.com',
         apiKey: 'test-api-key',
       };
 
-      const provider = createProvider(config);
+      const connector = createConnector(config);
 
-      expect(provider).toBeInstanceOf(CoderProvider);
-      expect(provider.type).toBe('coder');
+      expect(connector).toBeInstanceOf(CoderConnector);
+      expect(connector.type).toBe('coder');
     });
 
-    it('should pass configuration to CoderProvider', () => {
+    it('should pass configuration to CoderConnector', () => {
       const config: CoderConfig = {
         type: 'coder',
         url: 'https://my-coder.com',
         apiKey: 'my-secret-key',
       };
 
-      const provider = createProvider(config);
+      const connector = createConnector(config);
 
-      expect(provider).toBeInstanceOf(CoderProvider);
+      expect(connector).toBeInstanceOf(CoderConnector);
     });
   });
 
-  describe('Unknown provider', () => {
-    it('should throw ProviderNotFoundError for unknown type', () => {
+  describe('Unknown connector', () => {
+    it('should throw ConnectorNotFoundError for unknown type', () => {
       const config = {
-        type: 'unknown-provider',
+        type: 'unknown-connector',
       } as any;
 
-      expect(() => createProvider(config)).toThrow(ProviderNotFoundError);
-      expect(() => createProvider(config)).toThrow('Provider not found: unknown-provider');
+      expect(() => createConnector(config)).toThrow(ConnectorNotFoundError);
+      expect(() => createConnector(config)).toThrow('Connector not found: unknown-connector');
     });
 
-    it('should throw ProviderNotFoundError with correct error code', () => {
+    it('should throw ConnectorNotFoundError with correct error code', () => {
       const config = {
         type: 'invalid',
       } as any;
 
       try {
-        createProvider(config);
-        expect.fail('Should have thrown ProviderNotFoundError');
+        createConnector(config);
+        expect.fail('Should have thrown ConnectorNotFoundError');
       } catch (error: any) {
-        expect(error).toBeInstanceOf(ProviderNotFoundError);
-        expect(error.code).toBe('PROVIDER_NOT_FOUND');
-        expect(error.name).toBe('ProviderNotFoundError');
+        expect(error).toBeInstanceOf(ConnectorNotFoundError);
+        expect(error.code).toBe('CONNECTOR_NOT_FOUND');
+        expect(error.name).toBe('ConnectorNotFoundError');
       }
     });
   });
@@ -82,7 +82,7 @@ describe('createProvider', () => {
         type: 'codespaces',
       };
 
-      expect(() => createProvider(config)).not.toThrow();
+      expect(() => createConnector(config)).not.toThrow();
     });
 
     it('should accept valid CoderConfig', () => {
@@ -92,7 +92,28 @@ describe('createProvider', () => {
         apiKey: 'test-key',
       };
 
-      expect(() => createProvider(config)).not.toThrow();
+      expect(() => createConnector(config)).not.toThrow();
     });
+  });
+});
+
+describe('Backward compatibility', () => {
+  it('should support deprecated createProvider alias', async () => {
+    // Import the deprecated alias
+    const { createProvider } = await import('../../../src/index.js');
+    
+    const config: CodespacesConfig = {
+      type: 'codespaces',
+    };
+
+    const connector = createProvider(config);
+    expect(connector.type).toBe('codespaces');
+  });
+
+  it('should support deprecated ProviderNotFoundError alias', async () => {
+    const { ProviderNotFoundError, ConnectorNotFoundError } = await import('../../../src/core/errors.js');
+    
+    // ProviderNotFoundError should be an alias for ConnectorNotFoundError
+    expect(ProviderNotFoundError).toBe(ConnectorNotFoundError);
   });
 });
