@@ -72,3 +72,12 @@ export {
   UserNotFoundError,
   UserAlreadyExistsError,
 } from './types/index.js';
+
+// ============================================================================
+// Server Factory (for provider hosts)
+// ============================================================================
+// These exports are for creating HTTP servers that expose a Provider.
+// See s-2aqt for the specification.
+
+export { createServer } from './server/index.js';
+export type { ServerConfig } from './server/index.js';
