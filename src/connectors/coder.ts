@@ -110,8 +110,3 @@ export class CoderConnector implements Connector {
     throw new Error('CoderConnector.getUrls() not yet implemented');
   }
 }
-
-/**
- * @deprecated Use CoderConnector instead
- */
-export const CoderProvider = CoderConnector;

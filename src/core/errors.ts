@@ -28,11 +28,6 @@ export class ConnectorNotFoundError extends SudopodError {
 }
 
 /**
- * @deprecated Use ConnectorNotFoundError instead
- */
-export const ProviderNotFoundError = ConnectorNotFoundError;
-
-/**
  * Thrown when deployment operation fails
  */
 export class DeploymentFailedError extends SudopodError {
@@ -77,8 +72,3 @@ export class ConnectorError extends SudopodError {
     this.name = 'ConnectorError';
   }
 }
-
-/**
- * @deprecated Use ConnectorError instead
- */
-export const ProviderError = ConnectorError;

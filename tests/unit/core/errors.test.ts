@@ -9,9 +9,6 @@ import {
   DeploymentFailedError,
   AuthenticationError,
   ConnectorError,
-  // Deprecated aliases
-  ProviderNotFoundError,
-  ProviderError,
 } from '../../../src/core/errors.js';
 
 describe('Error Classes', () => {
@@ -215,19 +212,4 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('Backward compatibility', () => {
-    it('ProviderNotFoundError should be an alias for ConnectorNotFoundError', () => {
-      expect(ProviderNotFoundError).toBe(ConnectorNotFoundError);
-      
-      const error = new ProviderNotFoundError('test');
-      expect(error).toBeInstanceOf(ConnectorNotFoundError);
-    });
-
-    it('ProviderError should be an alias for ConnectorError', () => {
-      expect(ProviderError).toBe(ConnectorError);
-      
-      const error = new ProviderError('codespaces', 'stop', 'test');
-      expect(error).toBeInstanceOf(ConnectorError);
-    });
-  });
 });

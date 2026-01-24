@@ -97,23 +97,4 @@ describe('createConnector', () => {
   });
 });
 
-describe('Backward compatibility', () => {
-  it('should support deprecated createProvider alias', async () => {
-    // Import the deprecated alias
-    const { createProvider } = await import('../../../src/index.js');
-    
-    const config: CodespacesConfig = {
-      type: 'codespaces',
-    };
 
-    const connector = createProvider(config);
-    expect(connector.type).toBe('codespaces');
-  });
-
-  it('should support deprecated ProviderNotFoundError alias', async () => {
-    const { ProviderNotFoundError, ConnectorNotFoundError } = await import('../../../src/core/errors.js');
-    
-    // ProviderNotFoundError should be an alias for ConnectorNotFoundError
-    expect(ProviderNotFoundError).toBe(ConnectorNotFoundError);
-  });
-});

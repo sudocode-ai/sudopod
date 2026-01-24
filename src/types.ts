@@ -8,11 +8,6 @@
 export type ConnectorConfig = CodespacesConfig | CoderConfig;
 
 /**
- * @deprecated Use ConnectorConfig instead
- */
-export type ProviderConfig = ConnectorConfig;
-
-/**
  * Codespaces connector configuration
  */
 export interface CodespacesConfig {

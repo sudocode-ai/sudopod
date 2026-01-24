@@ -357,8 +357,3 @@ export class CodespacesConnector implements Connector {
     };
   }
 }
-
-/**
- * @deprecated Use CodespacesConnector instead
- */
-export const CodespacesProvider = CodespacesConnector;

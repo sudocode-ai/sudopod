@@ -354,9 +354,4 @@ describe('CoderConnector', () => {
   });
 });
 
-describe('Backward compatibility', () => {
-  it('should export CoderProvider as alias', async () => {
-    const { CoderProvider, CoderConnector } = await import('../../../src/connectors/coder.js');
-    expect(CoderProvider).toBe(CoderConnector);
-  });
-});
+

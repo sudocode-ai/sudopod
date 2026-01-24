@@ -575,9 +575,4 @@ describe('CodespacesConnector', () => {
   });
 });
 
-describe('Backward compatibility', () => {
-  it('should export CodespacesProvider as alias', async () => {
-    const { CodespacesProvider, CodespacesConnector } = await import('../../../src/connectors/codespaces.js');
-    expect(CodespacesProvider).toBe(CodespacesConnector);
-  });
-});
+
