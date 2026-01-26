@@ -90,3 +90,16 @@ export type { ServerConfig } from './server/index.js';
 
 export { SudopodClient, SudopodClientError } from './client/index.js';
 export type { SudopodClientConfig } from './client/index.js';
+
+// ============================================================================
+// SelfHostedConnector (for CLI direct-to-provider)
+// ============================================================================
+// Connector for self-hosted provider deployments.
+// Calls provider hosts directly using SudopodClient.
+// See s-xlsw for the specification.
+
+export { SelfHostedConnector } from './connectors/self-hosted/index.js';
+export type {
+  SelfHostedConnectorConfig,
+  SelfHostedCreateWorkspaceRequest,
+} from './connectors/self-hosted/index.js';
