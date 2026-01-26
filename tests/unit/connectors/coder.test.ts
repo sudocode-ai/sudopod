@@ -1,10 +1,10 @@
 /**
- * Tests for Coder provider
+ * Tests for Coder connector
  * Tests the new DeployOptions structure with git repo separation
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CoderProvider } from '../../../src/providers/coder.js';
+import { CoderConnector } from '../../../src/connectors/coder.js';
 import type { CoderConfig, DeployOptions, Deployment } from '../../../src/types.js';
 import {
   minimalCoderOptions,
@@ -14,8 +14,8 @@ import {
   envVarProviderConfigOptions,
 } from '../../fixtures/deploy-options.js';
 
-describe('CoderProvider', () => {
-  let provider: CoderProvider;
+describe('CoderConnector', () => {
+  let connector: CoderConnector;
   const config: CoderConfig = {
     type: 'coder',
     url: 'https://coder.example.com',
@@ -23,12 +23,12 @@ describe('CoderProvider', () => {
   };
 
   beforeEach(() => {
-    provider = new CoderProvider(config);
+    connector = new CoderConnector(config);
   });
 
   describe('constructor', () => {
-    it('should create provider with correct type', () => {
-      expect(provider.type).toBe('coder');
+    it('should create connector with correct type', () => {
+      expect(connector.type).toBe('coder');
     });
   });
 
@@ -63,7 +63,7 @@ describe('CoderProvider', () => {
         const options = minimalCoderOptions;
         
         expect(options.agents).toBeUndefined();
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle options with claude agent', async () => {
@@ -71,7 +71,7 @@ describe('CoderProvider', () => {
         
         expect(options.agents?.install).toEqual(['claude']);
         // When implemented, should set parameters['install_claude_agent'] = 'true'
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle empty agents array', async () => {
@@ -83,7 +83,7 @@ describe('CoderProvider', () => {
         };
         
         expect(options.agents.install).toEqual([]);
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
     });
 
@@ -92,7 +92,7 @@ describe('CoderProvider', () => {
         const options = minimalCoderOptions;
         
         expect(options.models).toBeUndefined();
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle claudeLtt configuration', async () => {
@@ -105,7 +105,7 @@ describe('CoderProvider', () => {
         
         expect(options.models.claudeLtt).toBe('ltt_test_token_12345');
         // When implemented, should set envVars['CLAUDE_LTT']
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle providerConfig configuration', async () => {
@@ -124,7 +124,7 @@ describe('CoderProvider', () => {
           apiKey: 'sk-ant-test-key',
         });
         // When implemented, should set envVars['LLM_PROVIDER_CONFIG'] as JSON string
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle providerConfigEnvVar configuration', async () => {
@@ -137,7 +137,7 @@ describe('CoderProvider', () => {
         
         expect(options.models.providerConfigEnvVar).toBe('LLM_CONFIG');
         // When implemented, should set envVars['LLM_PROVIDER_CONFIG_VAR']
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle Bedrock provider config', async () => {
@@ -154,21 +154,21 @@ describe('CoderProvider', () => {
         };
         
         expect(options.models.providerConfig?.provider).toBe('bedrock');
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
     });
 
     describe('deployment options', () => {
       it('should extract Coder-specific options', async () => {
         const options = completeCoderOptions;
-        const providerOpts = options.providerOptions as any;
+        const connectorOpts = options.providerOptions as any;
         
-        expect(providerOpts.template).toBe('sudocode-workspace');
+        expect(connectorOpts.template).toBe('sudocode-workspace');
         // Note: After deploy() is called, parameters will include install_claude_agent
         // This test checks the original parameters before mutation
-        expect(providerOpts.parameters.region).toBe('us-west-2');
-        expect(providerOpts.parameters.instanceType).toBe('large');
-        expect(providerOpts.autoStart).toBe(true);
+        expect(connectorOpts.parameters.region).toBe('us-west-2');
+        expect(connectorOpts.parameters.instanceType).toBe('large');
+        expect(connectorOpts.autoStart).toBe(true);
       });
 
       it('should handle keepAliveHours (honored by Coder)', async () => {
@@ -187,9 +187,9 @@ describe('CoderProvider', () => {
 
       it('should use default template when not specified', async () => {
         const options = minimalCoderOptions;
-        const providerOpts = options.providerOptions as any;
+        const connectorOpts = options.providerOptions as any;
         
-        expect(providerOpts.template).toBe('sudocode-workspace');
+        expect(connectorOpts.template).toBe('sudocode-workspace');
       });
     });
 
@@ -199,7 +199,7 @@ describe('CoderProvider', () => {
         
         expect(options.sudocode.mode).toBe('npm');
         expect(options.sudocode.version).toBeUndefined();
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
 
       it('should handle npm mode with version', async () => {
@@ -207,7 +207,7 @@ describe('CoderProvider', () => {
         
         expect(options.sudocode.mode).toBe('npm');
         expect(options.sudocode.version).toBe('latest');
-        await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+        await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
       });
     });
 
@@ -239,19 +239,19 @@ describe('CoderProvider', () => {
 
   describe('stop', () => {
     it('should throw not implemented error', async () => {
-      await expect(provider.stop('test-workspace')).rejects.toThrow('not yet implemented');
+      await expect(connector.stop('test-workspace')).rejects.toThrow('not yet implemented');
     });
   });
 
   describe('getStatus', () => {
     it('should throw not implemented error', async () => {
-      await expect(provider.getStatus('test-workspace')).rejects.toThrow('not yet implemented');
+      await expect(connector.getStatus('test-workspace')).rejects.toThrow('not yet implemented');
     });
   });
 
   describe('list', () => {
     it('should throw not implemented error', async () => {
-      await expect(provider.list()).rejects.toThrow('not yet implemented');
+      await expect(connector.list()).rejects.toThrow('not yet implemented');
     });
 
     it('should accept filters with new git structure fields', async () => {
@@ -262,23 +262,23 @@ describe('CoderProvider', () => {
         status: ['running' as const],
       };
       
-      await expect(provider.list(filters)).rejects.toThrow('not yet implemented');
+      await expect(connector.list(filters)).rejects.toThrow('not yet implemented');
     });
   });
 
   describe('getUrls', () => {
     it('should throw not implemented error', async () => {
-      await expect(provider.getUrls('test-workspace')).rejects.toThrow('not yet implemented');
+      await expect(connector.getUrls('test-workspace')).rejects.toThrow('not yet implemented');
     });
   });
 
   describe('configuration handling', () => {
     it('should store Coder URL', () => {
-      expect((provider as any).config.url).toBe('https://coder.example.com');
+      expect((connector as any).config.url).toBe('https://coder.example.com');
     });
 
     it('should store API key', () => {
-      expect((provider as any).config.apiKey).toBe('test-api-key');
+      expect((connector as any).config.apiKey).toBe('test-api-key');
     });
   });
 
@@ -301,25 +301,25 @@ describe('CoderProvider', () => {
       // - LLM_PROVIDER_CONFIG: JSON.stringify(providerConfig)
       // - LLM_PROVIDER_CONFIG_VAR: 'LLM_CONFIG'
       
-      await expect(provider.deploy(options)).rejects.toThrow('not yet implemented');
+      await expect(connector.deploy(options)).rejects.toThrow('not yet implemented');
     });
   });
 
   describe('template parameter handling', () => {
     it('should pass template parameters', async () => {
       const options = completeCoderOptions;
-      const providerOpts = options.providerOptions as any;
+      const connectorOpts = options.providerOptions as any;
       
       // Check that the original parameters are present
-      expect(providerOpts.parameters.region).toBe('us-west-2');
-      expect(providerOpts.parameters.instanceType).toBe('large');
+      expect(connectorOpts.parameters.region).toBe('us-west-2');
+      expect(connectorOpts.parameters.instanceType).toBe('large');
     });
 
     it('should handle empty parameters', async () => {
       const options = minimalCoderOptions;
-      const providerOpts = options.providerOptions as any;
+      const connectorOpts = options.providerOptions as any;
       
-      expect(providerOpts.parameters).toBeUndefined();
+      expect(connectorOpts.parameters).toBeUndefined();
     });
 
     it('should add agent installation to parameters', async () => {
@@ -347,9 +347,11 @@ describe('CoderProvider', () => {
 
     it('should handle auto-start option', async () => {
       const options = completeCoderOptions;
-      const providerOpts = options.providerOptions as any;
+      const connectorOpts = options.providerOptions as any;
       
-      expect(providerOpts.autoStart).toBe(true);
+      expect(connectorOpts.autoStart).toBe(true);
     });
   });
 });
+
+

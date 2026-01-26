@@ -1,5 +1,5 @@
 /**
- * GitHub Codespaces provider implementation
+ * GitHub Codespaces connector implementation
  */
 
 import type {
@@ -11,11 +11,11 @@ import type {
   DeploymentUrls,
   ListFilters,
 } from '../types.js';
-import type { Provider } from '../core/provider.js';
+import type { Connector } from '../core/connector.js';
 import {
   AuthenticationError,
   DeploymentFailedError,
-  ProviderError,
+  ConnectorError,
 } from '../core/errors.js';
 import {
   checkGhCliInstalled,
@@ -46,13 +46,13 @@ import {
 } from '../utils/codespaces/keepalive.js';
 
 /**
- * Provider implementation for GitHub Codespaces
+ * Connector implementation for GitHub Codespaces
  * 
- * This provider manages remote development environments using GitHub Codespaces.
+ * This connector manages remote development environments using GitHub Codespaces.
  * Authentication is handled through the gh CLI, which must be properly configured
- * before using this provider.
+ * before using this connector.
  */
-export class CodespacesProvider implements Provider {
+export class CodespacesConnector implements Connector {
   readonly type = 'codespaces' as const;
 
   constructor(private config: CodespacesConfig) {}
@@ -68,10 +68,10 @@ export class CodespacesProvider implements Provider {
     const { owner, repo, branch } = options.git;
     const repository = `${owner}/${repo}`;
     
-    // Extract provider-specific options
-    const providerOpts = options.providerOptions as CodespacesDeployOptions;
-    const machine = providerOpts.machine || 'basicLinux32gb';
-    const retentionPeriod = providerOpts.retentionPeriod || 14;
+    // Extract connector-specific options
+    const connectorOpts = options.providerOptions as CodespacesDeployOptions;
+    const machine = connectorOpts.machine || 'basicLinux32gb';
+    const retentionPeriod = connectorOpts.retentionPeriod || 14;
 
     // Determine workspace directory
     const workspaceName = repo;
@@ -149,7 +149,7 @@ export class CodespacesProvider implements Provider {
     try {
       await deleteCodespace(name);
     } catch (error: any) {
-      throw new ProviderError('codespaces', 'stop', error.message);
+      throw new ConnectorError('codespaces', 'stop', error.message);
     }
   }
 
@@ -161,7 +161,7 @@ export class CodespacesProvider implements Provider {
       const codespace = await getCodespaceInfo(name);
       return this.mapStatus(codespace.state);
     } catch (error: any) {
-      throw new ProviderError('codespaces', 'getStatus', error.message);
+      throw new ConnectorError('codespaces', 'getStatus', error.message);
     }
   }
 
@@ -204,7 +204,7 @@ export class CodespacesProvider implements Provider {
 
       return deployments;
     } catch (error: any) {
-      throw new ProviderError('codespaces', 'list', error.message);
+      throw new ConnectorError('codespaces', 'list', error.message);
     }
   }
 

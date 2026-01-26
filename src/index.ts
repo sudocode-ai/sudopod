@@ -3,18 +3,18 @@
  */
 
 // Export factory function
-export { createProvider } from './core/factory.js';
+export { createConnector } from './core/factory.js';
 
-// Export Provider interface
-export type { Provider } from './core/provider.js';
+// Export Connector interface
+export type { Connector } from './core/connector.js';
 
 // Export error classes
 export {
   SudopodError,
-  ProviderNotFoundError,
+  ConnectorNotFoundError,
   DeploymentFailedError,
   AuthenticationError,
-  ProviderError,
+  ConnectorError,
 } from './core/errors.js';
 
 // Export validation utilities
@@ -30,7 +30,7 @@ export {
 
 // Export all types
 export type {
-  ProviderConfig,
+  ConnectorConfig,
   CodespacesConfig,
   CoderConfig,
   DeployOptions,
@@ -41,3 +41,65 @@ export type {
   DeploymentUrls,
   ListFilters,
 } from './types.js';
+
+// ============================================================================
+// Provider Interface Contract (host-side types)
+// ============================================================================
+// These types are for provider implementations (e.g., CoderProvider in coder-infra)
+// that run on the host side. See s-7gqg for the specification.
+
+export type {
+  // Provider interface
+  Provider,
+  // Request types
+  CreateWorkspaceRequest,
+  UserIdentity,
+  EnsureUserRequest,
+  ListWorkspacesFilter,
+  // Response types
+  Workspace,
+  WorkspaceUrls,
+  WorkspaceStatus,
+  User,
+  UserStatus,
+  // Error types
+  ProviderErrorCode,
+} from './types/index.js';
+
+export {
+  ProviderError,
+  WorkspaceNotFoundError,
+  UserNotFoundError,
+  UserAlreadyExistsError,
+} from './types/index.js';
+
+// ============================================================================
+// Server Factory (for provider hosts)
+// ============================================================================
+// These exports are for creating HTTP servers that expose a Provider.
+// See s-2aqt for the specification.
+
+export { createServer } from './server/index.js';
+export type { ServerConfig } from './server/index.js';
+
+// ============================================================================
+// SudopodClient (for hub and SelfHostedConnector)
+// ============================================================================
+// HTTP client for calling sudopod provider hosts.
+// See s-3j7d for the specification.
+
+export { SudopodClient, SudopodClientError } from './client/index.js';
+export type { SudopodClientConfig } from './client/index.js';
+
+// ============================================================================
+// SelfHostedConnector (for CLI direct-to-provider)
+// ============================================================================
+// Connector for self-hosted provider deployments.
+// Calls provider hosts directly using SudopodClient.
+// See s-xlsw for the specification.
+
+export { SelfHostedConnector } from './connectors/self-hosted/index.js';
+export type {
+  SelfHostedConnectorConfig,
+  SelfHostedCreateWorkspaceRequest,
+} from './connectors/self-hosted/index.js';

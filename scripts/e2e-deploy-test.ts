@@ -89,14 +89,14 @@ async function runE2ETest() {
   }
   console.log('');
 
-  // Create provider
-  step('Creating Codespaces provider...');
-  let provider: any;
+  // Create connector
+  step('Creating Codespaces connector...');
+  let connector: any;
   try {
-    provider = sudopod.createProvider({ type: 'codespaces' });
-    success('Provider created successfully');
+    connector = sudopod.createConnector({ type: 'codespaces' });
+    success('Connector created successfully');
   } catch (err: any) {
-    error(`Failed to create provider: ${err.message}`);
+    error(`Failed to create connector: ${err.message}`);
     process.exit(1);
   }
   console.log('');
@@ -111,7 +111,7 @@ async function runE2ETest() {
 
   let deployment: any;
   try {
-    deployment = await provider.deploy({
+    deployment = await connector.deploy({
       git: {
         owner,
         repo,
@@ -154,7 +154,7 @@ async function runE2ETest() {
   step('Validating deployment...');
   try {
     // Check status
-    const status = await provider.getStatus(deployment.id);
+    const status = await connector.getStatus(deployment.id);
     if (status === 'running') {
       success(`Status check: ${status}`);
     } else {
@@ -162,7 +162,7 @@ async function runE2ETest() {
     }
 
     // Check URLs
-    const urls = await provider.getUrls(deployment.id);
+    const urls = await connector.getUrls(deployment.id);
     if (urls.workspace && urls.sudocode && urls.ssh) {
       success('All URLs generated successfully');
     } else {
@@ -170,7 +170,7 @@ async function runE2ETest() {
     }
 
     // List deployments
-    const deployments = await provider.list();
+    const deployments = await connector.list();
     const found = deployments.find((d: any) => d.id === deployment.id);
     if (found) {
       success('Deployment found in list()');
@@ -188,7 +188,7 @@ async function runE2ETest() {
 
   if (shouldCleanup) {
     try {
-      await provider.stop(deployment.id);
+      await connector.stop(deployment.id);
       success('Deployment stopped and deleted');
     } catch (err: any) {
       error(`Cleanup failed: ${err.message}`);
@@ -209,8 +209,8 @@ async function runE2ETest() {
   success('End-to-end deployment test completed successfully!');
   console.log('');
   console.log(colors.green + '✓ sudopod SDK works correctly' + colors.reset);
-  console.log(colors.green + '✓ Codespaces provider can deploy workspaces' + colors.reset);
-  console.log(colors.green + '✓ All provider methods function as expected' + colors.reset);
+  console.log(colors.green + '✓ Codespaces connector can deploy workspaces' + colors.reset);
+  console.log(colors.green + '✓ All connector methods function as expected' + colors.reset);
   console.log('');
 }
 

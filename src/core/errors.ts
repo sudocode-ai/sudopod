@@ -14,16 +14,16 @@ export class SudopodError extends Error {
 }
 
 /**
- * Thrown when requested provider type is not registered
+ * Thrown when requested connector type is not registered
  */
-export class ProviderNotFoundError extends SudopodError {
+export class ConnectorNotFoundError extends SudopodError {
   /**
-   * Creates a new ProviderNotFoundError
-   * @param type - The provider type that was not found
+   * Creates a new ConnectorNotFoundError
+   * @param type - The connector type that was not found
    */
   constructor(type: string) {
-    super(`Provider not found: ${type}`, 'PROVIDER_NOT_FOUND');
-    this.name = 'ProviderNotFoundError';
+    super(`Connector not found: ${type}`, 'CONNECTOR_NOT_FOUND');
+    this.name = 'ConnectorNotFoundError';
   }
 }
 
@@ -58,17 +58,17 @@ export class AuthenticationError extends SudopodError {
 }
 
 /**
- * Generic provider operation error
+ * Generic connector operation error
  */
-export class ProviderError extends SudopodError {
+export class ConnectorError extends SudopodError {
   /**
-   * Creates a new ProviderError
-   * @param provider - The provider where the error occurred
+   * Creates a new ConnectorError
+   * @param connector - The connector where the error occurred
    * @param operation - The operation that failed
    * @param reason - The reason for the failure
    */
-  constructor(public provider: string, public operation: string, reason: string) {
-    super(`${provider} ${operation} failed: ${reason}`, 'PROVIDER_ERROR');
-    this.name = 'ProviderError';
+  constructor(public connector: string, public operation: string, reason: string) {
+    super(`${connector} ${operation} failed: ${reason}`, 'CONNECTOR_ERROR');
+    this.name = 'ConnectorError';
   }
 }
