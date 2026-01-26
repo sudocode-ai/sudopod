@@ -81,3 +81,12 @@ export {
 
 export { createServer } from './server/index.js';
 export type { ServerConfig } from './server/index.js';
+
+// ============================================================================
+// SudopodClient (for hub and SelfHostedConnector)
+// ============================================================================
+// HTTP client for calling sudopod provider hosts.
+// See s-3j7d for the specification.
+
+export { SudopodClient, SudopodClientError } from './client/index.js';
+export type { SudopodClientConfig } from './client/index.js';
