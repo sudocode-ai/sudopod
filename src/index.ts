@@ -1,105 +1,65 @@
 /**
- * Sudopod - Stateless library for deploying and managing remote development environments
+ * Sudopod - Unified workspace provider for remote development environments
+ *
+ * @see s-9cl3 - Unified Workspace Provider Architecture specification
  */
 
-// Export factory function
-export { createConnector } from './core/factory.js';
+// ============================================================================
+// Provider Interface
+// ============================================================================
 
-// Export Connector interface
-export type { Connector } from './core/connector.js';
-
-// Export error classes
-export {
-  SudopodError,
-  ConnectorNotFoundError,
-  DeploymentFailedError,
-  AuthenticationError,
-  ConnectorError,
-} from './core/errors.js';
-
-// Export validation utilities
-export {
-  ValidationError,
-  validateDeployOptions,
-  validateGitConfig,
-  validateAgentConfig,
-  validateModelConfig,
-  validateSudocodeConfig,
-  validateServerConfig,
-} from './utils/validation.js';
-
-// Export all types
-export type {
-  ConnectorConfig,
-  CodespacesConfig,
-  CoderConfig,
-  DeployOptions,
-  CodespacesDeployOptions,
-  CoderDeployOptions,
-  Deployment,
-  DeploymentStatus,
-  DeploymentUrls,
-  ListFilters,
-} from './types.js';
+export type { Provider, ProviderType } from './provider/index.js';
 
 // ============================================================================
-// Provider Interface Contract (host-side types)
+// Configuration Types
 // ============================================================================
-// These types are for provider implementations (e.g., CoderProvider in coder-infra)
-// that run on the host side. See s-7gqg for the specification.
 
 export type {
-  // Provider interface
-  Provider,
-  // Request types
-  CreateWorkspaceRequest,
-  UserIdentity,
-  EnsureUserRequest,
-  ListWorkspacesFilter,
-  // Response types
+  ProviderConfig,
+  CreateOptions,
+  SetupConfig,
+  RuntimeConfig,
+  ResumeOptions,
+  LifecycleConfig,
+} from './provider/index.js';
+
+// ============================================================================
+// Workspace Types
+// ============================================================================
+
+export type {
   Workspace,
-  WorkspaceUrls,
   WorkspaceStatus,
-  User,
-  UserStatus,
-  // Error types
-  ProviderErrorCode,
-} from './types/index.js';
+  ListWorkspacesOptions,
+} from './provider/index.js';
+
+// ============================================================================
+// Factory Function
+// ============================================================================
+
+export { createProvider } from './provider/index.js';
+
+// ============================================================================
+// Provider Implementations
+// ============================================================================
+
+export { CodespacesProvider } from './provider/index.js';
+export { CoderProvider } from './provider/index.js';
+
+// ============================================================================
+// Error Classes
+// ============================================================================
 
 export {
   ProviderError,
   WorkspaceNotFoundError,
-  UserNotFoundError,
-  UserAlreadyExistsError,
-} from './types/index.js';
-
-// ============================================================================
-// Server Factory (for provider hosts)
-// ============================================================================
-// These exports are for creating HTTP servers that expose a Provider.
-// See s-2aqt for the specification.
-
-export { createServer } from './server/index.js';
-export type { ServerConfig } from './server/index.js';
-
-// ============================================================================
-// SudopodClient (for hub and SelfHostedConnector)
-// ============================================================================
-// HTTP client for calling sudopod provider hosts.
-// See s-3j7d for the specification.
-
-export { SudopodClient, SudopodClientError } from './client/index.js';
-export type { SudopodClientConfig } from './client/index.js';
-
-// ============================================================================
-// SelfHostedConnector (for CLI direct-to-provider)
-// ============================================================================
-// Connector for self-hosted provider deployments.
-// Calls provider hosts directly using SudopodClient.
-// See s-xlsw for the specification.
-
-export { SelfHostedConnector } from './connectors/self-hosted/index.js';
-export type {
-  SelfHostedConnectorConfig,
-  SelfHostedCreateWorkspaceRequest,
-} from './connectors/self-hosted/index.js';
+  WorkspaceCreationError,
+  WorkspaceTimeoutError,
+  WorkspaceStateError,
+  AuthenticationError,
+  AuthorizationError,
+  ConfigurationError,
+  ConnectionError,
+  PortForwardingError,
+  ExecutionError,
+} from './provider/index.js';
