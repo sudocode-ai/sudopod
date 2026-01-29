@@ -8,8 +8,8 @@
 
 import type { Provider, ProviderConfig } from './types.js';
 import { ConfigurationError } from './errors.js';
-import { CodespacesProvider } from './providers/codespaces.js';
-import { SudopodProvider } from './providers/sudopod.js';
+import { CodespacesProvider } from './codespaces/index.js';
+import { SudopodProvider } from './sudopod/index.js';
 
 /**
  * Create a provider instance from configuration.
