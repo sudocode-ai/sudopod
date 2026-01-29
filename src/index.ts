@@ -44,7 +44,7 @@ export { createProvider } from './provider/index.js';
 // ============================================================================
 
 export { CodespacesProvider } from './provider/index.js';
-export { CoderProvider } from './provider/index.js';
+export { SudopodProvider } from './provider/index.js';
 
 // ============================================================================
 // Error Classes

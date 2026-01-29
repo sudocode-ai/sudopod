@@ -9,7 +9,7 @@
 import type { Provider, ProviderConfig } from './types.js';
 import { ConfigurationError } from './errors.js';
 import { CodespacesProvider } from './providers/codespaces.js';
-import { CoderProvider } from './providers/coder.js';
+import { SudopodProvider } from './providers/sudopod.js';
 
 /**
  * Create a provider instance from configuration.
@@ -23,17 +23,20 @@ export function createProvider(config: ProviderConfig): Provider {
     case 'codespaces':
       return new CodespacesProvider();
 
-    case 'coder':
+    case 'sudopod':
       if (!config.authToken) {
         throw new ConfigurationError(
-          'coder',
-          'Coder provider requires authToken'
+          'sudopod',
+          'Sudopod provider requires authToken'
         );
       }
       if (!config.url) {
-        throw new ConfigurationError('coder', 'Coder provider requires url');
+        throw new ConfigurationError(
+          'sudopod',
+          'Sudopod provider requires url'
+        );
       }
-      return new CoderProvider(config.url, config.authToken);
+      return new SudopodProvider(config.url, config.authToken);
 
     default:
       throw new ConfigurationError(

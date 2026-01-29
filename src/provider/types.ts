@@ -2,7 +2,7 @@
  * Unified Workspace Provider Types
  *
  * This module defines the Provider interface and all shared types for
- * workspace management. All providers (Codespaces, Coder, etc.) implement
+ * workspace management. All providers (Codespaces, Sudopod, etc.) implement
  * this interface.
  *
  * @see s-9cl3 - Unified Workspace Provider Architecture specification
@@ -15,7 +15,7 @@
 /**
  * Supported provider types.
  */
-export type ProviderType = 'codespaces' | 'coder';
+export type ProviderType = 'codespaces' | 'sudopod';
 
 // ============================================================================
 // Provider Interface
@@ -23,7 +23,7 @@ export type ProviderType = 'codespaces' | 'coder';
 
 /**
  * Provider interface - the single abstraction for workspace management.
- * All providers (Codespaces, Coder, etc.) implement this interface.
+ * All providers (Codespaces, Sudopod, etc.) implement this interface.
  *
  * Providers are STATELESS - they don't store user config.
  * The consuming app (CLI/Hub) owns config storage and passes it on each call.
@@ -95,26 +95,23 @@ export interface Provider {
  *
  * Authentication model:
  * - Codespaces: No auth needed (gh CLI handles it via `gh auth login`)
- * - Coder (self-hosted): User provides token from `coder tokens create`
- * - Coder (via sudocode-hub): User provides OAuth token, hub proxies with admin token
+ * - Sudopod: API token for sudopod-server
  */
 export interface ProviderConfig {
   /** Which provider to use */
   type: ProviderType;
 
   /**
-   * Authentication token (required for Coder, ignored for Codespaces).
+   * Authentication token (required for Sudopod, ignored for Codespaces).
    *
-   * For self-hosted Coder: Token from `coder tokens create`
-   * For sudocode-hub: User's OAuth token (hub handles the rest)
+   * For Sudopod: API token for sudopod-server
    */
   authToken?: string;
 
   /**
-   * Provider URL (required for Coder, ignored for Codespaces).
+   * Provider URL (required for Sudopod, ignored for Codespaces).
    *
-   * For self-hosted Coder: e.g., "https://coder.mycompany.com"
-   * For sudocode-hub: "https://hub.sudocode.ai" (hub proxies to actual Coder)
+   * For Sudopod: e.g., "https://pods.sudocode.ai"
    */
   url?: string;
 }
@@ -152,7 +149,7 @@ export interface CreateOptions {
    * Required - forces explicit decision about retention.
    *
    * - Codespaces: Maps to retentionPeriodMinutes
-   * - Coder: Workspace deadline / dormancy settings
+   * - Sudopod: Managed by sudopod-server lifecycle
    */
   retentionDays: number;
 
@@ -162,7 +159,7 @@ export interface CreateOptions {
    *
    * Examples:
    * - Codespaces: { machine: 'largePremiumLinux' }
-   * - Coder: { template: 'python-dev', gpu: true, region: 'us-west' }
+   * - Sudopod: { region: 'us-west', gpu: true }
    */
   providerParams?: Record<string, unknown>;
 
@@ -194,13 +191,6 @@ export interface SetupConfig {
   };
 
   /**
-   * Secrets to inject into the workspace environment.
-   * Written to secret files or env vars during creation.
-   * Persists across restarts (stored in workspace).
-   */
-  secrets?: Record<string, string>;
-
-  /**
    * LLM/model configuration for the workspace.
    * Configured once during creation.
    */
@@ -211,8 +201,11 @@ export interface SetupConfig {
 
   /**
    * Arbitrary setup script to run during workspace creation.
-   * Runs once after the workspace is provisioned.
-   * Use for: installing dependencies, configuring tools, etc.
+   * Runs once after the workspace is provisioned and sudocode is installed.
+   * Use for: installing dependencies, configuring tools, building .env files, etc.
+   *
+   * The setup script has access to all environment variables injected by the
+   * platform (e.g., Codespaces secrets are automatically available as envvars).
    *
    * Example: "npm install -g typescript && pip install torch"
    */
@@ -227,8 +220,8 @@ export interface SetupConfig {
  * Runtime config - passed on every resume() call.
  * These are settings needed to reconnect to a workspace.
  *
- * IMPORTANT: This is intentionally minimal. One-time setup (agents, secrets,
- * models, scripts) belongs in SetupConfig and is only applied during create().
+ * IMPORTANT: This is intentionally minimal. One-time setup (agents, scripts,
+ * tailscale) belongs in SetupConfig and is only applied during create().
  */
 export interface RuntimeConfig {
   /**
@@ -321,24 +314,42 @@ export interface Workspace {
   lastActivityAt?: Date;
 
   /**
-   * Connection URLs - available when workspace is running.
-   * sudocode and ide are always present when running.
+   * Connection info — how to reach the workspace.
+   * What's available depends on the provider and configuration.
    */
-  urls: {
-    /** Sudocode server URL (required when running) */
-    sudocode: string;
-    /** IDE/VS Code URL (required when running) */
-    ide: string;
-    /** Provider dashboard URL (optional) */
-    dashboard?: string;
+  connection: {
+    /**
+     * Tailscale identity — present when workspace was provisioned with tailscale.
+     *
+     * This is identity (which node on the tailnet is this workspace), not
+     * connection details. The user's tailscale client handles discovery and routing.
+     */
+    tailscale?: {
+      /** Node name on the tailnet (e.g., "sudopod-my-workspace") */
+      nodeName: string;
+      /** Headscale node ID (numeric). Useful for headscale API calls. */
+      nodeId: string;
+    };
+
+    /**
+     * SSH connection details.
+     * Always present — this is the universal fallback access method.
+     */
+    ssh: {
+      /** Full SSH command (e.g., "gh codespace ssh -c name" or "ssh user@host -i key") */
+      command: string;
+    };
+
+    /**
+     * Provider-specific URLs (dashboard, web IDE, etc.).
+     * What's available varies by provider:
+     * - Codespaces: { ide: "https://name.github.dev", dashboard: "https://github.com/codespaces" }
+     * - Sudopod: { dashboard: "https://pods.sudocode.ai/workspaces/id" }
+     */
+    urls?: Record<string, string>;
   };
 
-  /** SSH connection details (if available) */
-  ssh?: {
-    command: string; // e.g., "gh codespace ssh -c workspace-name"
-  };
-
-  /** Currently forwarded ports */
+  /** Currently forwarded ports (codespaces-specific, not used by sudopod w/ tailscale) */
   forwardedPorts?: Array<{
     local: number;
     remote: number;

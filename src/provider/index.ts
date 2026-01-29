@@ -43,4 +43,4 @@ export { createProvider } from './factory.js';
 
 // Provider implementations
 export { CodespacesProvider } from './providers/codespaces.js';
-export { CoderProvider } from './providers/coder.js';
+export { SudopodProvider } from './providers/sudopod.js';
