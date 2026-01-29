@@ -59,19 +59,19 @@ describe.skipIf(skipReason)('CoderApiClient Integration', () => {
       const user = await client.getMe();
       const orgId = user.organization_ids[0];
 
-      // Assumes 'local-docker' template exists from coder-infra setup
-      const template = await client.getTemplate(orgId, 'local-docker');
+      // Assumes 'default' template exists from coder-infra setup
+      const template = await client.getTemplate(orgId, 'default');
 
       expect(template).toBeDefined();
       expect(template.id).toBeDefined();
-      expect(template.name).toBe('local-docker');
+      expect(template.name).toBe('default');
       expect(template.active_version_id).toBeDefined();
     });
 
     it('should get template version', async () => {
       const user = await client.getMe();
       const orgId = user.organization_ids[0];
-      const template = await client.getTemplate(orgId, 'local-docker');
+      const template = await client.getTemplate(orgId, 'default');
 
       const version = await client.getTemplateVersion(template.active_version_id);
 
@@ -85,7 +85,7 @@ describe.skipIf(skipReason)('CoderApiClient Integration', () => {
     it('should create a workspace', async () => {
       const user = await client.getMe();
       const orgId = user.organization_ids[0];
-      const template = await client.getTemplate(orgId, 'local-docker');
+      const template = await client.getTemplate(orgId, 'default');
 
       testWorkspace = await client.createWorkspace(orgId, user.username, {
         name: testWorkspaceName,

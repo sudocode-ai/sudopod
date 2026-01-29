@@ -16,43 +16,28 @@ The `refs/coder-infra` directory contains a Docker-based Coder setup for local d
 ```bash
 cd refs/coder-infra
 
-# Copy the example env file
-cp .env.oidc.example .env
+# Start Coder (local mode, no OIDC required)
+./scripts/start.sh -d
 
-# Edit .env with your OAuth credentials (Google OAuth required for OIDC)
-# Or use basic auth by removing OIDC config
-
-# Start Coder
-docker-compose -f docker-compose.oidc.yml up -d
+# Or start manually:
+docker-compose up -d
 ```
 
 Coder will be available at http://localhost:7080
 
-### 2. Create Admin User & Get Token
-
-```bash
-# First login creates admin user
-# Via browser: http://localhost:7080
-
-# Or via CLI:
-coder login http://localhost:7080
-
-# Create a token for tests
-coder tokens create sudopod-test
-```
-
-### 3. Push the Test Template
+### 2. Run Setup (creates admin user, pushes template, generates token)
 
 ```bash
 cd refs/coder-infra
 
-# Push the local-docker template
-coder templates push local-docker \
-  --directory ./templates/minimal \
-  --yes
+# Automated setup - creates admin, pushes default template, generates API token
+./scripts/setup.sh
+
+# Export the token for tests
+eval $(./scripts/get-token.sh --export)
 ```
 
-### 4. Configure Test Environment
+### 3. Configure Test Environment
 
 Create `.env.test` in the project root:
 
@@ -105,7 +90,7 @@ docker network create coder-network
 
 Check the Coder logs:
 ```bash
-docker-compose -f docker-compose.oidc.yml logs -f coder
+docker-compose logs -f coder
 ```
 
 Check the workspace agent logs:
