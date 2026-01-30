@@ -7,13 +7,18 @@
  * @see s-9cl3 - Unified Workspace Provider Architecture specification
  */
 
-// Provider interface and type
-export type { Provider, ProviderType } from './types.js';
+// Provider interface
+export type { Provider } from './types.js';
 
-// Configuration types
-export type { ProviderConfig, CreateOptions, SetupConfig } from './types.js';
+// Provider configs
+export type {
+  CodespacesConfig,
+  CoderConfig,
+  HubConfig,
+} from './types.js';
 
-// Runtime types
+// Create/runtime types
+export type { CreateOptions, SetupConfig } from './types.js';
 export type { RuntimeConfig, ResumeOptions, LifecycleConfig } from './types.js';
 
 // Workspace types
@@ -43,4 +48,3 @@ export { createProvider } from './factory.js';
 
 // Provider implementations
 export { CodespacesProvider } from './codespaces/index.js';
-export { SudopodProvider } from './sudopod/index.js';

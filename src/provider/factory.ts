@@ -1,47 +1,40 @@
 /**
  * Provider Factory
  *
- * Creates provider instances based on configuration.
+ * Creates provider instances based on a provider name and its config.
  *
  * @see s-9cl3 - Unified Workspace Provider Architecture specification
  */
 
-import type { Provider, ProviderConfig } from './types.js';
+import type { Provider, CodespacesConfig, CoderConfig, HubConfig } from './types.js';
 import { ConfigurationError } from './errors.js';
 import { CodespacesProvider } from './codespaces/index.js';
-import { SudopodProvider } from './sudopod/index.js';
 
 /**
- * Create a provider instance from configuration.
+ * Create a provider instance.
  *
- * @param config - Provider configuration
+ * @param provider - Provider name ('codespaces', 'coder', 'hub')
+ * @param config - Provider-specific configuration
  * @returns Provider instance
- * @throws ConfigurationError if config is invalid
+ * @throws ConfigurationError if provider is unknown or not yet implemented
  */
-export function createProvider(config: ProviderConfig): Provider {
-  switch (config.type) {
+export function createProvider(provider: 'codespaces', config: CodespacesConfig): Provider;
+export function createProvider(provider: 'coder', config: CoderConfig): Provider;
+export function createProvider(provider: 'hub', config: HubConfig): Provider;
+export function createProvider(provider: string, config: CodespacesConfig | CoderConfig | HubConfig): Provider {
+  switch (provider) {
     case 'codespaces':
-      return new CodespacesProvider();
+      return new CodespacesProvider(config as CodespacesConfig);
 
-    case 'sudopod':
-      if (!config.authToken) {
-        throw new ConfigurationError(
-          'sudopod',
-          'Sudopod provider requires authToken'
-        );
-      }
-      if (!config.url) {
-        throw new ConfigurationError(
-          'sudopod',
-          'Sudopod provider requires url'
-        );
-      }
-      return new SudopodProvider(config.url, config.authToken);
+    case 'coder':
+      // TODO: return new CoderProvider(config as CoderConfig);
+      throw new ConfigurationError('coder', 'Coder provider not yet implemented');
+
+    case 'hub':
+      // TODO: return new HubProvider(config as HubConfig);
+      throw new ConfigurationError('hub', 'Hub provider not yet implemented');
 
     default:
-      throw new ConfigurationError(
-        (config as ProviderConfig).type ?? 'unknown',
-        `Unknown provider type: ${(config as ProviderConfig).type}`
-      );
+      throw new ConfigurationError(provider, `Unknown provider: ${provider}`);
   }
 }

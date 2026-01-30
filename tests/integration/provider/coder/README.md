@@ -5,41 +5,40 @@ This directory contains integration tests for the Coder provider. These tests re
 ## Prerequisites
 
 - Docker and Docker Compose
-- Coder CLI (`brew install coder/coder/coder` or download from https://coder.com/docs/install)
+- jq (`brew install jq`)
 
-## Local Coder Setup
+## Setup
 
-The `refs/coder-infra` directory contains a Docker-based Coder setup for local development.
+The Coder instance is managed by the `refs/coder-infra` submodule. You must start and configure it before running tests.
 
-### 1. Start Coder Server
+### 1. Start Coder (self-hosted flow)
 
 ```bash
 cd refs/coder-infra
-
-# Start Coder (local mode, no OIDC required)
-./scripts/start.sh -d
-
-# Or start manually:
-docker-compose up -d
+docker compose -f docker-compose.self-hosted.yml up -d
 ```
 
 Coder will be available at http://localhost:7080
 
-### 2. Run Setup (creates admin user, pushes template, generates token)
+### 2. Run setup (creates admin user, generates API token)
 
 ```bash
 cd refs/coder-infra
+./scripts/setup-self-hosted.sh
+```
 
-# Automated setup - creates admin, pushes default template, generates API token
-./scripts/setup.sh
+This creates:
+- Admin user: `ssh.fake1@gmail.com` / `ABC151qwe!@`
+- A long-lived API token saved to `refs/coder-infra/.coder-token`
 
-# Export the token for tests
+### 3. Export token to your shell
+
+```bash
+cd refs/coder-infra
 eval $(./scripts/get-token.sh --export)
 ```
 
-### 3. Configure Test Environment
-
-Create `.env.test` in the project root:
+Or create `.env.test` in the project root:
 
 ```bash
 CODER_URL=http://localhost:7080
@@ -59,41 +58,34 @@ npm run test:integration -- tests/integration/provider/coder/api.test.ts
 npm run test:integration -- tests/integration/provider/coder --reporter=verbose
 ```
 
-## Test Workspace Naming
+Tests skip automatically if `CODER_URL` and `CODER_TOKEN` are not set.
 
-Integration tests create workspaces with the naming pattern `test-{timestamp}` and clean them up in `afterAll()`. If tests are interrupted, you may need to manually delete leftover workspaces:
+## Teardown
 
 ```bash
-coder list
-coder delete test-1234567890 --yes
+cd refs/coder-infra
+docker compose -f docker-compose.self-hosted.yml down -v
 ```
 
 ## Troubleshooting
 
 ### "Token invalid" errors
 
-Tokens expire. Create a new one:
+Tokens expire or the Coder instance was recreated. Re-run setup:
 ```bash
-coder tokens create sudopod-test-new
-```
-
-### Container networking issues
-
-Ensure the `coder-network` Docker network exists:
-```bash
-docker network ls | grep coder-network
-# If missing:
-docker network create coder-network
+cd refs/coder-infra
+./scripts/setup-self-hosted.sh
+eval $(./scripts/get-token.sh --export)
 ```
 
 ### Workspace stuck in "starting"
 
-Check the Coder logs:
+Check Coder logs:
 ```bash
-docker-compose logs -f coder
+cd refs/coder-infra
+docker compose -f docker-compose.self-hosted.yml logs -f coder
 ```
 
-Check the workspace agent logs:
-```bash
-coder ssh <workspace-name> -- cat /tmp/coder-agent.log
-```
+### Test workspace cleanup
+
+Integration tests create workspaces with the pattern `test-{timestamp}` and clean up in `afterAll()`. If interrupted, manually delete via the Coder UI at http://localhost:7080.

@@ -2,20 +2,49 @@
  * Unified Workspace Provider Types
  *
  * This module defines the Provider interface and all shared types for
- * workspace management. All providers (Codespaces, Sudopod, etc.) implement
- * this interface.
+ * workspace management. All providers implement this interface.
  *
  * @see s-9cl3 - Unified Workspace Provider Architecture specification
  */
 
 // ============================================================================
-// Provider Type
+// Provider Configs
 // ============================================================================
 
 /**
- * Supported provider types.
+ * GitHub Codespaces provider configuration.
+ * Auth-only — machine sizing is specified per-workspace in CreateOptions.
  */
-export type ProviderType = 'codespaces' | 'sudopod';
+export interface CodespacesConfig {
+  /** GitHub auth token (retrieved via `gh auth token`) */
+  authToken: string;
+}
+
+/**
+ * Self-hosted / direct Coder provider configuration.
+ * Auth & host only — template params are specified per-workspace in CreateOptions.
+ */
+export interface CoderConfig {
+  /** URL of the Coder instance (e.g., "https://coder.company.com") */
+  url: string;
+
+  /** Coder session token (user creates via Coder UI or `coder tokens create`) */
+  authToken: string;
+}
+
+/**
+ * Sudocode Hub provider configuration.
+ * Auth & host only — VM sizing is specified per-workspace in CreateOptions.
+ * The hub handles auth mapping, quota enforcement, and usage tracking.
+ * Internally uses the sudopod-coder-sdk to delegate to Coder.
+ */
+export interface HubConfig {
+  /** URL of the sudocode-hub (e.g., "https://hub.sudocode.ai") */
+  url: string;
+
+  /** Sudocode user auth token (issued by hub) */
+  authToken: string;
+}
 
 // ============================================================================
 // Provider Interface
@@ -23,15 +52,12 @@ export type ProviderType = 'codespaces' | 'sudopod';
 
 /**
  * Provider interface - the single abstraction for workspace management.
- * All providers (Codespaces, Sudopod, etc.) implement this interface.
+ * All providers implement this interface.
  *
- * Providers are STATELESS - they don't store user config.
- * The consuming app (CLI/Hub) owns config storage and passes it on each call.
+ * Each provider communicates with its own backend via stateless API calls —
+ * no persistent connections are required between the SDK and the provider backend.
  */
 export interface Provider {
-  /** Provider identifier */
-  readonly type: ProviderType;
-
   /** Provider display name */
   readonly name: string;
 
@@ -87,41 +113,15 @@ export interface Provider {
 }
 
 // ============================================================================
-// Provider Config
-// ============================================================================
-
-/**
- * Provider configuration - how to connect to the provider.
- *
- * Authentication model:
- * - Codespaces: No auth needed (gh CLI handles it via `gh auth login`)
- * - Sudopod: API token for sudopod-server
- */
-export interface ProviderConfig {
-  /** Which provider to use */
-  type: ProviderType;
-
-  /**
-   * Authentication token (required for Sudopod, ignored for Codespaces).
-   *
-   * For Sudopod: API token for sudopod-server
-   */
-  authToken?: string;
-
-  /**
-   * Provider URL (required for Sudopod, ignored for Codespaces).
-   *
-   * For Sudopod: e.g., "https://pods.sudocode.ai"
-   */
-  url?: string;
-}
-
-// ============================================================================
 // Create Options
 // ============================================================================
 
 /**
  * Full config for creating a new workspace - used only on first creation.
+ *
+ * Includes both provider-agnostic settings (name, repo, retention) and
+ * optional provider-specific hints (machineType, templateParams).
+ * Each provider decides which fields it respects.
  */
 export interface CreateOptions {
   /** Unique name for the workspace */
@@ -135,33 +135,29 @@ export interface CreateOptions {
   };
 
   /**
-   * Resource hints - provider maps these to available machine types.
-   * Provider does best-effort mapping; not all providers support all options.
-   */
-  resources?: {
-    cpuCores?: number;
-    memoryGb?: number;
-    diskSizeGb?: number;
-  };
-
-  /**
    * Days before a stopped workspace is automatically deleted.
    * Required - forces explicit decision about retention.
-   *
-   * - Codespaces: Maps to retentionPeriodMinutes
-   * - Sudopod: Managed by sudopod-server lifecycle
    */
   retentionDays: number;
 
   /**
-   * Provider-specific parameters - passed through to template/API.
-   * Unrecognized params are ignored with a warning.
+   * Machine type / size hint.
+   * Provider-specific — each provider interprets this in its own way:
+   * - Codespaces: machine SKU (e.g., 'basicLinux32gb', 'largePremiumLinux')
+   * - Hub: VM size preset (e.g., 'S', 'M', 'L')
+   * - Coder: may map to template parameters
    *
-   * Examples:
-   * - Codespaces: { machine: 'largePremiumLinux' }
-   * - Sudopod: { region: 'us-west', gpu: true }
+   * If omitted, the provider selects a default.
    */
-  providerParams?: Record<string, unknown>;
+  machineType?: string;
+
+  /**
+   * Additional provider-specific template parameters.
+   * Passed through to the provider's provisioning layer.
+   * - Coder: forwarded as Coder template parameters
+   * - Other providers may ignore this
+   */
+  templateParams?: Record<string, unknown>;
 
   /** One-time setup config - applied only during workspace creation */
   setup?: SetupConfig;
@@ -196,7 +192,6 @@ export interface SetupConfig {
    */
   models?: {
     claudeLtt?: string;
-    providerConfig?: Record<string, unknown>;
   };
 
   /**
@@ -210,6 +205,31 @@ export interface SetupConfig {
    * Example: "npm install -g typescript && pip install torch"
    */
   setupScript?: string;
+
+  /**
+   * Tailscale configuration for private network access.
+   * When provided, the provider installs Tailscale and joins the specified tailnet
+   * during workspace creation.
+   *
+   * On resume(), the provider detects the existing Tailscale config on disk
+   * and restarts the daemon — no auth key is needed for reconnection.
+   *
+   * @see s-8gxf - Tailscale Integration spec
+   */
+  tailscale?: {
+    /**
+     * Pre-authentication key for joining the tailnet.
+     * Generated by the caller (e.g., SDK calls Headscale API using a stored API key).
+     */
+    authKey: string;
+
+    /**
+     * Control server URL.
+     * Required for self-hosted Headscale. Omit for Tailscale SaaS
+     * (defaults to Tailscale control plane).
+     */
+    controlServer?: string;
+  };
 }
 
 // ============================================================================
@@ -256,13 +276,13 @@ export interface ResumeOptions {
 /**
  * Lifecycle configuration for workspace keepalive behavior.
  *
- * The keepalive daemon monitors sudocode activity and extends the workspace
- * deadline to prevent auto-stop during active usage.
+ * This defines the desired behavior — how long inactivity is tolerated
+ * before the workspace can auto-stop. The mechanism for detecting activity
+ * and extending deadlines is an implementation detail of each provider.
  */
 export interface LifecycleConfig {
   /**
    * Minutes of sudocode inactivity before allowing workspace to auto-stop.
-   * The keepalive daemon stops bumping the deadline after this timeout expires.
    * Default: 60 (1 hour)
    */
   idleTimeoutMinutes?: number;
@@ -295,9 +315,6 @@ export interface Workspace {
   /** Human-readable name */
   name: string;
 
-  /** Provider type */
-  provider: ProviderType;
-
   /** Current status */
   status: WorkspaceStatus;
 
@@ -325,7 +342,7 @@ export interface Workspace {
      * connection details. The user's tailscale client handles discovery and routing.
      */
     tailscale?: {
-      /** Node name on the tailnet (e.g., "sudopod-my-workspace") */
+      /** Node name on the tailnet */
       nodeName: string;
       /** Headscale node ID (numeric). Useful for headscale API calls. */
       nodeId: string;
@@ -336,20 +353,18 @@ export interface Workspace {
      * Always present — this is the universal fallback access method.
      */
     ssh: {
-      /** Full SSH command (e.g., "gh codespace ssh -c name" or "ssh user@host -i key") */
+      /** Full SSH command (provider-specific format) */
       command: string;
     };
 
     /**
      * Provider-specific URLs (dashboard, web IDE, etc.).
-     * What's available varies by provider:
-     * - Codespaces: { ide: "https://name.github.dev", dashboard: "https://github.com/codespaces" }
-     * - Sudopod: { dashboard: "https://pods.sudocode.ai/workspaces/id" }
+     * What's available varies by provider.
      */
     urls?: Record<string, string>;
   };
 
-  /** Currently forwarded ports (codespaces-specific, not used by sudopod w/ tailscale) */
+  /** Currently forwarded ports (provider-specific, may not apply to all providers) */
   forwardedPorts?: Array<{
     local: number;
     remote: number;

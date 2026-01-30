@@ -8,14 +8,23 @@
 // Provider Interface
 // ============================================================================
 
-export type { Provider, ProviderType } from './provider/index.js';
+export type { Provider } from './provider/index.js';
 
 // ============================================================================
-// Configuration Types
+// Provider Configs
 // ============================================================================
 
 export type {
-  ProviderConfig,
+  CodespacesConfig,
+  CoderConfig,
+  HubConfig,
+} from './provider/index.js';
+
+// ============================================================================
+// Create / Runtime Types
+// ============================================================================
+
+export type {
   CreateOptions,
   SetupConfig,
   RuntimeConfig,
@@ -44,7 +53,6 @@ export { createProvider } from './provider/index.js';
 // ============================================================================
 
 export { CodespacesProvider } from './provider/index.js';
-export { SudopodProvider } from './provider/index.js';
 
 // ============================================================================
 // Error Classes

@@ -7,8 +7,6 @@
  * @see s-9cl3 - Unified Workspace Provider Architecture specification
  */
 
-import type { ProviderType } from './types.js';
-
 // ============================================================================
 // Base Error
 // ============================================================================
@@ -20,7 +18,7 @@ import type { ProviderType } from './types.js';
 export class ProviderError extends Error {
   constructor(
     message: string,
-    public readonly provider: ProviderType | string,
+    public readonly provider: string,
     public readonly operation: string,
     public readonly cause?: Error
   ) {
@@ -43,7 +41,7 @@ export class ProviderError extends Error {
  */
 export class WorkspaceNotFoundError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     public readonly workspaceId: string
   ) {
     super(`Workspace not found: ${workspaceId}`, provider, 'get');
@@ -56,7 +54,7 @@ export class WorkspaceNotFoundError extends ProviderError {
  */
 export class WorkspaceCreationError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     message: string,
     cause?: Error
   ) {
@@ -70,7 +68,7 @@ export class WorkspaceCreationError extends ProviderError {
  */
 export class WorkspaceTimeoutError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     operation: string,
     public readonly timeoutMs: number
   ) {
@@ -84,7 +82,7 @@ export class WorkspaceTimeoutError extends ProviderError {
  */
 export class WorkspaceStateError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     operation: string,
     public readonly workspaceId: string,
     public readonly currentState: string,
@@ -107,7 +105,7 @@ export class WorkspaceStateError extends ProviderError {
  * Thrown when authentication fails.
  */
 export class AuthenticationError extends ProviderError {
-  constructor(provider: ProviderType | string, message: string) {
+  constructor(provider: string, message: string) {
     super(message, provider, 'auth');
     this.name = 'AuthenticationError';
   }
@@ -118,7 +116,7 @@ export class AuthenticationError extends ProviderError {
  */
 export class AuthorizationError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     operation: string,
     message: string
   ) {
@@ -135,7 +133,7 @@ export class AuthorizationError extends ProviderError {
  * Thrown when provider configuration is invalid or missing.
  */
 export class ConfigurationError extends ProviderError {
-  constructor(provider: ProviderType | string, message: string) {
+  constructor(provider: string, message: string) {
     super(message, provider, 'config');
     this.name = 'ConfigurationError';
   }
@@ -150,7 +148,7 @@ export class ConfigurationError extends ProviderError {
  */
 export class ConnectionError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     operation: string,
     message: string,
     cause?: Error
@@ -165,7 +163,7 @@ export class ConnectionError extends ProviderError {
  */
 export class PortForwardingError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     public readonly port: number,
     message: string,
     cause?: Error
@@ -184,7 +182,7 @@ export class PortForwardingError extends ProviderError {
  */
 export class ExecutionError extends ProviderError {
   constructor(
-    provider: ProviderType | string,
+    provider: string,
     public readonly command: string,
     public readonly exitCode: number,
     public readonly stderr?: string
