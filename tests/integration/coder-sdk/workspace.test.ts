@@ -1,8 +1,9 @@
 /**
  * CoderClient Workspace Lifecycle — Integration Tests
  *
- * Full lifecycle test: create → running → stop → stopped → start → running → delete.
+ * Full lifecycle test: create → running → agent ready → stop → stopped → start → running → delete.
  * Also tests lookup operations (getWorkspace, getWorkspaceByOwnerAndName, listWorkspaces).
+ * Verifies that the template startup script runs (agent lifecycle_state → ready).
  *
  * Requires CODER_URL and CODER_TOKEN env vars (Flow 1).
  * Uses generous timeouts — workspace creation with Docker templates can take 30-120s.
@@ -13,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { CoderClient } from '../../../src/coder-sdk/client.js';
 import { CoderApiError } from '../../../src/coder-sdk/errors.js';
-import type { CoderWorkspace } from '../../../src/coder-sdk/types.js';
+import type { CoderWorkspace, CoderWorkspaceAgent } from '../../../src/coder-sdk/types.js';
 import {
   getCoderSelfHostedEnv,
   createTestClient,
@@ -23,6 +24,19 @@ import {
 
 const result = getCoderSelfHostedEnv();
 const skipReason = result.skipReason;
+
+/**
+ * Extract the first agent from a workspace's latest build resources.
+ * Returns undefined if no agent is found (e.g., workspace is stopped).
+ */
+function getFirstAgent(workspace: CoderWorkspace): CoderWorkspaceAgent | undefined {
+  for (const resource of workspace.latest_build.resources) {
+    if (resource.agents && resource.agents.length > 0) {
+      return resource.agents[0];
+    }
+  }
+  return undefined;
+}
 
 describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () => {
   let client: CoderClient;
@@ -46,14 +60,16 @@ describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () 
     }
   });
 
-  it('createWorkspace() creates a workspace and returns it', async () => {
+  it('createWorkspace() creates a workspace with sudocode parameters', async () => {
     workspace = await client.createWorkspace({
       organizationId: orgId,
       username: 'me',
       name: workspaceName,
       templateId,
       richParameterValues: [
-        { name: 'repository', value: 'coder/coder' },
+        { name: 'repository', value: 'octocat/Hello-World' },
+        { name: 'claude_ltt', value: 'test-ltt-token-for-integration' },
+        { name: 'sudocode_port', value: '3000' },
       ],
     });
 
@@ -75,6 +91,83 @@ describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () 
 
     expect(running.latest_build.status).toBe('running');
   }, 200_000);
+
+  it('agent is connected after workspace starts', async () => {
+    expect(workspace).toBeDefined();
+
+    // Poll until the agent is connected. The agent connects independently
+    // of the startup script — it establishes a connection as soon as the
+    // container starts, then runs the startup script asynchronously.
+    const deadline = Date.now() + 120_000;
+    let agent: CoderWorkspaceAgent | undefined;
+
+    while (Date.now() < deadline) {
+      const ws = await client.getWorkspace(workspace!.id);
+      agent = getFirstAgent(ws);
+
+      if (agent?.status === 'connected') break;
+
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
+    expect(agent).toBeDefined();
+    expect(agent!.status).toBe('connected');
+  }, 130_000);
+
+  it('agent lifecycle_state reaches "ready" (startup script completed)', async () => {
+    expect(workspace).toBeDefined();
+
+    // Poll until the startup script finishes. This confirms:
+    // - npm install -g sudocode succeeded
+    // - sudocode init ran
+    // - sudocode server launched without the script erroring out
+    const deadline = Date.now() + 600_000; // 10 min — first image pull can be slow
+    let agent: CoderWorkspaceAgent | undefined;
+
+    while (Date.now() < deadline) {
+      const ws = await client.getWorkspace(workspace!.id);
+      agent = getFirstAgent(ws);
+
+      if (agent?.lifecycle_state === 'ready') break;
+      if (agent?.lifecycle_state === 'start_error') {
+        throw new Error('Agent startup script failed (lifecycle_state = start_error)');
+      }
+
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+
+    expect(agent).toBeDefined();
+    expect(agent!.lifecycle_state).toBe('ready');
+  }, 610_000);
+
+  it('sudocode server is responding inside workspace (via coder ssh)', async () => {
+    expect(workspace).toBeDefined();
+
+    // Use coder CLI to exec a curl inside the workspace.
+    // The CLI authenticates using CODER_URL + CODER_SESSION_TOKEN env vars.
+    const { execSync } = await import('child_process');
+
+    const ownerName = workspace!.owner_name;
+    const wsName = workspace!.name;
+    const env = result.env!;
+
+    const output = execSync(
+      `coder ssh ${ownerName}/${wsName} -- curl -sf http://localhost:3000/health`,
+      {
+        env: {
+          ...process.env,
+          CODER_URL: env.url,
+          CODER_SESSION_TOKEN: env.token,
+        },
+        timeout: 30_000,
+        encoding: 'utf-8',
+      },
+    );
+
+    // The health endpoint should return something — at minimum a 200 response body
+    expect(output).toBeDefined();
+    expect(output.length).toBeGreaterThan(0);
+  }, 60_000);
 
   it('getWorkspace() returns the workspace', async () => {
     expect(workspace).toBeDefined();

@@ -95,6 +95,16 @@ The `coder-sdk/` tests validate the `sudopod-coder-sdk` against a real Coder ins
 
 ### Local Coder Setup (Flow 1 — Self-Hosted)
 
+**Quick start (single command — full reset):**
+
+```bash
+refs/coder-infra/scripts/self-hosted-testing-setup.sh
+```
+
+This tears down any existing Coder instance, starts fresh containers, creates the admin user, pushes the default template (with sudocode startup script), and generates an API token. Everything from zero to working in one command.
+
+**Step-by-step (if you prefer manual control):**
+
 ```bash
 cd refs/coder-infra
 
@@ -111,8 +121,6 @@ eval $(./scripts/get-token.sh --export)
 curl http://localhost:7080/api/v2/buildinfo
 ```
 
-This gives you `CODER_URL=http://localhost:7080` and `CODER_TOKEN` in your environment.
-
 ### Running Coder SDK Tests
 
 ```bash
@@ -123,7 +131,9 @@ npx vitest run tests/integration/coder-sdk/ --config vitest.integration.config.t
 npx vitest run tests/integration/coder-sdk/user.test.ts --config vitest.integration.config.ts
 ```
 
-If `CODER_URL` or `CODER_TOKEN` are not set, all coder-sdk tests will skip with a message showing the exact setup commands.
+**Auto-login:** The test setup file (`tests/integration/coder-sdk/setup.ts`) automatically detects a running Coder at `localhost:7080` and logs in with the hardcoded dev credentials. You don't need to manually set `CODER_URL` or `CODER_TOKEN` — just start Coder and run the tests.
+
+If Coder isn't running, all coder-sdk tests will skip with a message showing setup commands.
 
 ### Test Files
 
