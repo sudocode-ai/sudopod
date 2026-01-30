@@ -69,7 +69,7 @@ export interface GhPort {
 export async function execInCodespace(
   name: string,
   command: string,
-  options?: { background?: boolean }
+  options?: { background?: boolean; timeout?: number }
 ): Promise<ExecResult> {
   const background = options?.background ?? false;
 
@@ -84,9 +84,11 @@ export async function execInCodespace(
     ? `gh codespace ssh -c ${name} -- "bash -l -c \\"echo ${encoded} | base64 -d | bash\\" &"`
     : `gh codespace ssh -c ${name} -- "bash -l -c \\"echo ${encoded} | base64 -d | bash\\""`;
 
+  const defaultTimeout = background ? 10_000 : 120_000;
+
   try {
     const { stdout, stderr } = await execAsync(sshCommand, {
-      timeout: background ? 10_000 : 120_000,
+      timeout: options?.timeout ?? defaultTimeout,
     });
     return { exitCode: 0, stdout, stderr };
   } catch (error: unknown) {
@@ -138,9 +140,12 @@ export async function createCodespace(
 
 /**
  * Start a stopped codespace.
+ *
+ * The gh CLI has no dedicated `start` subcommand. SSHing into a stopped
+ * codespace triggers an auto-start, so we run a no-op command via SSH.
  */
 export async function startCodespace(name: string): Promise<void> {
-  await execAsync(`gh codespace start -c ${name}`, { timeout: 120_000 });
+  await execInCodespace(name, 'true', { timeout: 120_000 });
 }
 
 /**

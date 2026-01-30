@@ -4,13 +4,12 @@ This directory contains integration tests for sudopod that interact with real re
 
 ## Overview
 
-Integration tests validate sudopod primitives by creating and managing real GitHub Codespaces. These tests:
+Integration tests validate sudopod primitives against real infrastructure. There are two categories:
 
-- Create actual codespaces in the `sudocode-ai/sudocode` repository
-- Install and configure sudocode in dev mode
-- Start sudocode servers and verify functionality
-- Test keepalive mechanisms with real activity monitoring
-- Clean up resources even if tests fail
+1. **Codespaces tests** — create and manage real GitHub Codespaces
+2. **Coder SDK tests** — run against a local Coder instance via Docker
+
+Tests skip gracefully when infrastructure is unavailable, printing setup instructions.
 
 ## Prerequisites
 
@@ -90,6 +89,70 @@ If you need to iterate on tests, use:
 npx vitest run tests/integration/utils/codespaces/full-deployment.test.ts --config vitest.integration.config.ts
 ```
 
+## Coder SDK Integration Tests
+
+The `coder-sdk/` tests validate the `sudopod-coder-sdk` against a real Coder instance running locally via Docker.
+
+### Local Coder Setup (Flow 1 — Self-Hosted)
+
+```bash
+cd refs/coder-infra
+
+# Start the self-hosted stack (port 7080)
+docker compose -f docker-compose.self-hosted.yml up -d
+
+# Run setup: creates admin user, pushes default template, generates API token
+./scripts/setup-self-hosted.sh
+
+# Export token to your shell
+eval $(./scripts/get-token.sh --export)
+
+# Verify it works
+curl http://localhost:7080/api/v2/buildinfo
+```
+
+This gives you `CODER_URL=http://localhost:7080` and `CODER_TOKEN` in your environment.
+
+### Running Coder SDK Tests
+
+```bash
+# Run all coder-sdk integration tests
+npx vitest run tests/integration/coder-sdk/ --config vitest.integration.config.ts
+
+# Run specific test file
+npx vitest run tests/integration/coder-sdk/user.test.ts --config vitest.integration.config.ts
+```
+
+If `CODER_URL` or `CODER_TOKEN` are not set, all coder-sdk tests will skip with a message showing the exact setup commands.
+
+### Test Files
+
+| File | What it tests | Timeout |
+|------|---------------|---------|
+| `user.test.ts` | `getCurrentUser`, `getUser("me")`, `listUsers` | Default |
+| `template.test.ts` | `listTemplates`, `getTemplateByName`, `getTemplateVersion` | Default |
+| `workspace.test.ts` | Full lifecycle: create → running → stop → start → delete | 200s per step |
+| `errors.test.ts` | Invalid token (401), not found (404), duplicate name (409) | 60s |
+
+### Port Conventions
+
+| Flow | Port | Env Vars | Docker Compose File |
+|------|------|----------|---------------------|
+| Flow 1 (Self-Hosted) | 7080 | `CODER_URL`, `CODER_TOKEN` | `docker-compose.self-hosted.yml` |
+| Flow 2 (Hub) | 7081 | `CODER_HUB_URL`, `CODER_HUB_TOKEN` | `docker-compose.hub.yml` |
+
+Both flows can run simultaneously since they use different ports.
+
+### Teardown
+
+```bash
+# Stop self-hosted Coder
+docker compose -f docker-compose.self-hosted.yml down -v
+
+# Stop hub Coder
+docker compose -f docker-compose.hub.yml down -v
+```
+
 ## Test Configuration
 
 Integration tests use `vitest.integration.config.ts` with special settings:
@@ -103,13 +166,23 @@ Integration tests use `vitest.integration.config.ts` with special settings:
 
 ```
 tests/integration/
-├── README.md                           # This file
-├── utils/
-│   └── codespaces/
-│       ├── helpers.ts                  # Test utilities and cleanup
-│       ├── full-deployment.test.ts     # End-to-end deployment test
-│       ├── idle-timeout-behavior.test.ts  # Idle timeout daemon validation
-│       └── dev-mode-installation.test.ts # Dev mode installation test
+├── README.md                              # This file
+├── coder-sdk/                             # Coder SDK integration tests
+│   ├── helpers.ts                         # Env detection + setup instructions
+│   ├── user.test.ts                       # User operations
+│   ├── template.test.ts                   # Template operations
+│   ├── workspace.test.ts                  # Full workspace lifecycle
+│   └── errors.test.ts                     # Error handling (401, 404, 409)
+├── provider/
+│   └── coder/
+│       ├── api.test.ts                    # CoderApiClient integration tests
+│       └── cli.test.ts                    # CLI integration tests
+└── utils/
+    └── codespaces/
+        ├── helpers.ts                     # Codespaces test utilities
+        ├── full-deployment.test.ts        # End-to-end deployment test
+        ├── idle-timeout-behavior.test.ts  # Idle timeout daemon validation
+        └── dev-mode-installation.test.ts  # Dev mode installation test
 ```
 
 ## Writing New Integration Tests

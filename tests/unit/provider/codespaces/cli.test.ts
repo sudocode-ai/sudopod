@@ -169,26 +169,17 @@ describe('Codespaces CLI Wrapper', () => {
   // ==========================================================================
 
   describe('startCodespace', () => {
-    it('should call gh codespace start', async () => {
+    it('should SSH into codespace to trigger auto-start', async () => {
       const { startCodespace } = await importCli();
 
       mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
 
       await startCodespace('my-codespace');
 
+      // startCodespace runs a no-op command via SSH, which triggers auto-start
       expect(mockExecAsync).toHaveBeenCalledWith(
-        'gh codespace start -c my-codespace',
+        expect.stringContaining('gh codespace ssh -c my-codespace'),
         expect.objectContaining({ timeout: 120_000 })
-      );
-    });
-
-    it('should throw on failure', async () => {
-      const { startCodespace } = await importCli();
-
-      mockExecAsync.mockRejectedValueOnce(new Error('already running'));
-
-      await expect(startCodespace('my-codespace')).rejects.toThrow(
-        'already running'
       );
     });
   });

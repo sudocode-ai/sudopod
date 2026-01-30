@@ -20,7 +20,7 @@ import { ExecutionError } from '../errors.js';
 export type ExecFn = (
   name: string,
   command: string,
-  options?: { background?: boolean }
+  options?: { background?: boolean; timeout?: number }
 ) => Promise<ExecResult>;
 
 /**
@@ -29,9 +29,10 @@ export type ExecFn = (
 async function execOrThrow(
   exec: ExecFn,
   name: string,
-  command: string
+  command: string,
+  options?: { timeout?: number }
 ): Promise<ExecResult> {
-  const result = await exec(name, command);
+  const result = await exec(name, command, options);
   if (result.exitCode !== 0) {
     throw new ExecutionError('codespaces', command, result.exitCode, result.stderr);
   }
@@ -41,14 +42,8 @@ async function execOrThrow(
 /**
  * Install sudocode globally and initialize it.
  *
- * This is an unconditional prerequisite for every codespace — it runs
- * during create() regardless of whether SetupConfig is provided.
- * The runtime flow (sudocode server, keepalive, port forwarding) depends
- * on sudocode being installed.
- *
- * Switches to Node 22 LTS first because sudocode depends on better-sqlite3,
- * which requires prebuilt native bindings that may not be available on
- * newer Node versions (e.g., Node 24 ships with codespaces by default).
+ * Unconditional prerequisite for every codespace — runs during create()
+ * regardless of whether SetupConfig is provided.
  *
  * @param codespaceName - The codespace name
  * @param exec - Function to execute commands in the codespace
@@ -57,23 +52,10 @@ export async function installSudocode(
   codespaceName: string,
   exec: ExecFn
 ): Promise<void> {
-  // Run all install steps in a SINGLE SSH session to avoid nvm/PATH issues.
-  // Each execInCodespace call opens a new SSH session. nvm state (alias, PATH)
-  // set in one session may not be available in the next, causing "command not
-  // found" errors. By chaining everything, we ensure the Node 22 environment
-  // is active for both npm install and sudocode init.
-  await execOrThrow(
-    exec,
-    codespaceName,
-    [
-      // Pin to Node 22 LTS — better-sqlite3 native bindings need it
-      'source /usr/local/share/nvm/nvm.sh',
-      'nvm alias default 22',
-      'nvm use 22',
-      'npm install -g sudocode',
-      'sudocode init',
-    ].join(' && ')
-  );
+  await execOrThrow(exec, codespaceName, 'npm install -g sudocode', {
+    timeout: 300_000, // 5 minutes — npm install with native deps can be slow
+  });
+  await execOrThrow(exec, codespaceName, 'sudocode init');
 }
 
 /**

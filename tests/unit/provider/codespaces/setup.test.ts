@@ -12,29 +12,23 @@ import type { SetupConfig } from '../../../../src/provider/types.js';
 
 describe('installSudocode', () => {
   let mockExec: ExecFn;
-  let execCalls: Array<{ name: string; command: string }>;
+  let execCalls: Array<{ name: string; command: string; options?: { timeout?: number } }>;
 
   beforeEach(() => {
     execCalls = [];
-    mockExec = vi.fn(async (name: string, command: string) => {
-      execCalls.push({ name, command });
+    mockExec = vi.fn(async (name: string, command: string, options?: { timeout?: number }) => {
+      execCalls.push({ name, command, options });
       return { exitCode: 0, stdout: '', stderr: '' };
     });
   });
 
-  it('should run nvm setup, install, and init in a single chained command', async () => {
+  it('should install sudocode and init as separate steps', async () => {
     await installSudocode('my-cs', mockExec);
 
-    // All steps chained in one exec call to avoid cross-session PATH issues
-    expect(execCalls).toHaveLength(1);
-    const cmd = execCalls[0].command;
-    expect(cmd).toContain('source /usr/local/share/nvm/nvm.sh');
-    expect(cmd).toContain('nvm alias default 22');
-    expect(cmd).toContain('nvm use 22');
-    expect(cmd).toContain('npm install -g sudocode');
-    expect(cmd).toContain('sudocode init');
-    // All chained with &&
-    expect(cmd.split(' && ')).toHaveLength(5);
+    expect(execCalls).toHaveLength(2);
+    expect(execCalls[0].command).toBe('npm install -g sudocode');
+    expect(execCalls[0].options).toEqual({ timeout: 300_000 });
+    expect(execCalls[1].command).toBe('sudocode init');
   });
 
   it('should pass the codespace name to exec', async () => {
