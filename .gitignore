@@ -10,3 +10,4 @@ dist/
 
 # Integration test secrets
 tests/.env.secrets
+.env.test
