@@ -6,9 +6,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   installSudocode,
   applySetupConfig,
+  setupTailscale,
 } from '../../../../src/provider/codespaces/setup.js';
 import type { ExecFn } from '../../../../src/provider/codespaces/setup.js';
 import type { SetupConfig } from '../../../../src/provider/types.js';
+import { ExecutionError } from '../../../../src/provider/errors.js';
 
 describe('installSudocode', () => {
   let mockExec: ExecFn;
@@ -128,19 +130,20 @@ describe('applySetupConfig', () => {
     ).toBe(true);
   });
 
-  it('should configure Tailscale with auth key', async () => {
+  it('should configure Tailscale with auth key and new flags', async () => {
     const setup: SetupConfig = {
       tailscale: { authKey: 'tskey-auth-abc123' },
     };
 
     await applySetupConfig('my-cs', mockExec, setup);
 
-    expect(execCalls[0].command).toBe(
-      'curl -fsSL https://tailscale.com/install.sh | sh'
-    );
-    expect(execCalls[1].command).toBe(
-      'tailscale up --authkey=tskey-auth-abc123'
-    );
+    // Default mock returns exitCode 0 for everything → tier 1 (already-running)
+    // Probe: which tailscale, then tailscale status, then tailscale up
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).toBeDefined();
+    expect(upCmd).toContain('--authkey=tskey-auth-abc123');
+    expect(upCmd).toContain('--accept-dns=false');
+    expect(upCmd).toContain('--hostname=my-cs');
   });
 
   it('should include control server for self-hosted Headscale', async () => {
@@ -153,9 +156,8 @@ describe('applySetupConfig', () => {
 
     await applySetupConfig('my-cs', mockExec, setup);
 
-    expect(execCalls[1].command).toBe(
-      'tailscale up --authkey=tskey-auth-abc123 --login-server=https://headscale.company.com'
-    );
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).toContain('--login-server=https://headscale.company.com');
   });
 
   it('should skip Tailscale when not configured', async () => {
@@ -204,12 +206,13 @@ describe('applySetupConfig', () => {
     // 2. Agents
     expect(commands[2]).toBe('sudocode agent install claude');
 
-    // 3. Tailscale
-    expect(commands[3]).toContain('tailscale.com/install.sh');
-    expect(commands[4]).toContain('tailscale up');
+    // 3. Tailscale (tier 1 path: which → status → tailscale up)
+    expect(commands[3]).toBe('which tailscale');
+    expect(commands[4]).toContain('tailscale status');
+    expect(commands[5]).toContain('tailscale up');
 
-    // 4. User script
-    expect(commands[5]).toBe('echo done');
+    // 4. User script (comes after tailscale)
+    expect(commands[commands.length - 1]).toBe('echo done');
   });
 
   it('should pass the codespace name to all exec calls', async () => {
@@ -223,6 +226,257 @@ describe('applySetupConfig', () => {
 
     for (const call of execCalls) {
       expect(call.name).toBe('specific-cs-name');
+    }
+  });
+});
+
+// ============================================================================
+// setupTailscale
+// ============================================================================
+
+describe('setupTailscale', () => {
+  let execCalls: Array<{ name: string; command: string; options?: object }>;
+
+  /**
+   * Create a mock exec that returns specific responses based on command substrings.
+   * Commands not matching any pattern return exitCode 0.
+   */
+  function createMockExec(
+    responses: Record<string, Partial<{ exitCode: number; stdout: string; stderr: string }>> = {},
+  ): ExecFn {
+    return vi.fn(async (name: string, command: string, options?: object) => {
+      execCalls.push({ name, command, options });
+      for (const [pattern, result] of Object.entries(responses)) {
+        if (command.includes(pattern)) {
+          return { exitCode: 0, stdout: '', stderr: '', ...result };
+        }
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+  }
+
+  beforeEach(() => {
+    execCalls = [];
+  });
+
+  // ── Tier 3: Not installed ──
+
+  it('tier 3: should install, start daemon, and join when tailscale is not installed', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1, stderr: 'tailscale not found' },
+    });
+
+    const result = await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-auth-abc123',
+    });
+
+    expect(result.tier).toBe('installed');
+    expect(result.hostname).toBe('my-cs');
+
+    const commands = execCalls.map((c) => c.command);
+
+    // Probe
+    expect(commands[0]).toBe('which tailscale');
+
+    // Remove broken apt repos
+    expect(commands).toContainEqual(
+      expect.stringContaining('rm -f /etc/apt/sources.list.d/yarn.list'),
+    );
+
+    // Install
+    expect(commands).toContainEqual(
+      expect.stringContaining('tailscale.com/install.sh'),
+    );
+
+    // Start daemon
+    expect(commands).toContainEqual(
+      expect.stringContaining('sudo mkdir -p /var/lib/tailscale'),
+    );
+    expect(commands).toContainEqual(
+      expect.stringContaining('sudo tailscaled'),
+    );
+
+    // Join
+    const upCmd = commands.find((c) => c.includes('tailscale up'));
+    expect(upCmd).toContain('--authkey=tskey-auth-abc123');
+    expect(upCmd).toContain('--accept-dns=false');
+    expect(upCmd).toContain('--hostname=my-cs');
+  });
+
+  it('tier 3: should use 120s timeout for install', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1 },
+    });
+
+    await setupTailscale('my-cs', mockExec, { authKey: 'tskey-abc' });
+
+    const installCall = execCalls.find((c) => c.command.includes('install.sh'));
+    expect(installCall?.options).toEqual(expect.objectContaining({ timeout: 120_000 }));
+  });
+
+  // ── Tier 2: Installed but daemon not running ──
+
+  it('tier 2: should start daemon and join when daemon is not running', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0, stdout: '/usr/bin/tailscale\n' },
+      'tailscale status': { exitCode: 1, stderr: 'failed to connect to local tailscaled' },
+    });
+
+    const result = await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-auth-abc123',
+    });
+
+    expect(result.tier).toBe('started-daemon');
+
+    const commands = execCalls.map((c) => c.command);
+
+    // Should NOT install
+    expect(commands.every((c) => !c.includes('install.sh'))).toBe(true);
+    expect(commands.every((c) => !c.includes('yarn.list'))).toBe(true);
+
+    // Should start daemon
+    expect(commands).toContainEqual(
+      expect.stringContaining('sudo tailscaled'),
+    );
+
+    // Should join
+    const upCmd = commands.find((c) => c.includes('tailscale up'));
+    expect(upCmd).toContain('--authkey=tskey-auth-abc123');
+  });
+
+  // ── Tier 1: Already installed and running ──
+
+  it('tier 1: should only run tailscale up when already running', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0, stdout: '/usr/bin/tailscale\n' },
+      'tailscale status': { exitCode: 0, stdout: '100.64.0.1 my-cs ...\n' },
+    });
+
+    const result = await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-auth-abc123',
+    });
+
+    expect(result.tier).toBe('already-running');
+
+    const commands = execCalls.map((c) => c.command);
+
+    // Should NOT install or start daemon
+    expect(commands.every((c) => !c.includes('install.sh'))).toBe(true);
+    expect(commands.every((c) => !c.includes('sudo tailscaled'))).toBe(true);
+    expect(commands.every((c) => !c.includes('sudo mkdir'))).toBe(true);
+
+    // Should have: which, status, tailscale up
+    expect(commands).toHaveLength(3);
+    expect(commands[0]).toBe('which tailscale');
+    expect(commands[1]).toContain('tailscale status');
+    expect(commands[2]).toContain('sudo tailscale up');
+  });
+
+  it('tier 1: should treat NeedsLogin as daemon-running', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 1, stderr: 'NeedsLogin' },
+    });
+
+    const result = await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+    });
+
+    expect(result.tier).toBe('already-running');
+  });
+
+  it('tier 1: should treat Stopped as daemon-running', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 1, stdout: 'Stopped' },
+    });
+
+    const result = await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+    });
+
+    expect(result.tier).toBe('already-running');
+  });
+
+  // ── Control server ──
+
+  it('should include --login-server when controlServer is provided', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 0 },
+    });
+
+    await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+      controlServer: 'https://headscale.company.com',
+    });
+
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).toContain('--login-server=https://headscale.company.com');
+  });
+
+  it('should NOT include --login-server when controlServer is omitted', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 0 },
+    });
+
+    await setupTailscale('my-cs', mockExec, { authKey: 'tskey-abc' });
+
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).not.toContain('--login-server');
+  });
+
+  // ── Hostname ──
+
+  it('should use the codespace name as the tailnet hostname', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 0 },
+    });
+
+    await setupTailscale('my-specific-codespace', mockExec, { authKey: 'tskey-abc' });
+
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).toContain('--hostname=my-specific-codespace');
+  });
+
+  // ── Error handling ──
+
+  it('should throw ExecutionError when install script fails', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1 },
+      'install.sh': { exitCode: 1, stderr: 'curl failed' },
+    });
+
+    await expect(
+      setupTailscale('my-cs', mockExec, { authKey: 'tskey-abc' }),
+    ).rejects.toThrow(ExecutionError);
+  });
+
+  it('should throw ExecutionError when tailscale up fails', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 0 },
+      'tailscale up': { exitCode: 1, stderr: 'auth key expired' },
+    });
+
+    await expect(
+      setupTailscale('my-cs', mockExec, { authKey: 'tskey-expired' }),
+    ).rejects.toThrow(ExecutionError);
+  });
+
+  // ── Codespace name passthrough ──
+
+  it('should pass the codespace name to all exec calls', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1 },
+    });
+
+    await setupTailscale('specific-cs', mockExec, { authKey: 'tskey-abc' });
+
+    for (const call of execCalls) {
+      expect(call.name).toBe('specific-cs');
     }
   });
 });
