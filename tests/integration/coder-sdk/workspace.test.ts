@@ -128,6 +128,11 @@ describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () 
       const ws = await client.getWorkspace(workspace!.id);
       agent = getFirstAgent(ws);
 
+      const elapsed = Math.round((Date.now() - (deadline - 600_000)) / 1000);
+      console.log(
+        `[lifecycle poll +${elapsed}s] status=${agent?.status ?? 'n/a'} lifecycle=${agent?.lifecycle_state ?? 'n/a'}`,
+      );
+
       if (agent?.lifecycle_state === 'ready') break;
       if (agent?.lifecycle_state === 'start_error') {
         throw new Error('Agent startup script failed (lifecycle_state = start_error)');
@@ -137,6 +142,7 @@ describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () 
     }
 
     expect(agent).toBeDefined();
+    console.log(`[lifecycle result] lifecycle_state=${agent!.lifecycle_state}`);
     expect(agent!.lifecycle_state).toBe('ready');
   }, 610_000);
 
@@ -151,6 +157,8 @@ describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () 
     const wsName = workspace!.name;
     const env = result.env!;
 
+    console.log(`[ssh health] Executing: coder ssh ${ownerName}/${wsName} -- curl -sf http://localhost:3000/health`);
+
     const output = execSync(
       `coder ssh ${ownerName}/${wsName} -- curl -sf http://localhost:3000/health`,
       {
@@ -163,6 +171,8 @@ describe.skipIf(skipReason)('CoderClient Workspace Lifecycle (integration)', () 
         encoding: 'utf-8',
       },
     );
+
+    console.log(`[ssh health] Response (${output.length} bytes): ${output.trim()}`);
 
     // The health endpoint should return something — at minimum a 200 response body
     expect(output).toBeDefined();
