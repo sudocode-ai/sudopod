@@ -263,10 +263,29 @@ export interface RuntimeConfig {
 
 /**
  * Config for resuming an existing workspace.
- * Only contains runtime settings - setup is already done.
+ * Contains runtime settings and optional Tailscale re-join config.
+ *
+ * NOTE: Tailscale state does not persist across codespace stop/start
+ * (the /var/lib/tailscale/ directory is wiped). Callers must provide
+ * tailscale config on every resume to re-join the tailnet.
  */
 export interface ResumeOptions {
   runtime?: RuntimeConfig;
+
+  /**
+   * Tailscale configuration for re-joining the tailnet on resume.
+   *
+   * Codespace stop/start wipes Tailscale state, so the daemon must be
+   * re-installed or re-joined on every resume. The tiered setup handles
+   * this gracefully — if the binary is still installed, it skips
+   * installation and just starts the daemon + joins.
+   *
+   * @see s-k316 - Codespaces Tailscale Integration
+   */
+  tailscale?: {
+    authKey: string;
+    controlServer?: string;
+  };
 }
 
 // ============================================================================

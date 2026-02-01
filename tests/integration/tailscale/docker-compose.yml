@@ -18,6 +18,34 @@ services:
       retries: 3
       start_period: 10s
 
+  # Tailscale client container — joins the Headscale tailnet as the "local" node.
+  # Used by connectivity tests to verify cross-node traffic without requiring
+  # Tailscale installed on the developer's machine.
+  #
+  # Requires TS_AUTHKEY and TS_LOGIN_SERVER env vars set before starting:
+  #   TS_AUTHKEY=<preauthkey> TS_LOGIN_SERVER=<ngrok-url> docker compose up tailscale-client
+  tailscale-client:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-client
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_EXTRA_ARGS=--login-server=${TS_LOGIN_SERVER} --hostname=docker-local --accept-dns=false
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    depends_on:
+      headscale:
+        condition: service_healthy
+    profiles:
+      - connectivity
+
 volumes:
   headscale-data:
   headscale-run:
+  tailscale-state:

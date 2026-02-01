@@ -37,7 +37,7 @@ import {
   getPorts,
 } from './cli.js';
 import type { GhCodespace } from './cli.js';
-import { installSudocode, applySetupConfig } from './setup.js';
+import { installSudocode, applySetupConfig, setupTailscale } from './setup.js';
 import { generateKeepaliveScript } from './keepalive.js';
 
 const PROVIDER_NAME = 'codespaces';
@@ -205,6 +205,14 @@ export class CodespacesProvider implements Provider {
         );
       }
       await this.waitForStatus(name, 'running', 120_000);
+    }
+
+    // Re-join Tailscale if config provided (Codespaces wipes /var/lib/tailscale/ on stop/start)
+    if (options?.tailscale) {
+      await setupTailscale(name, execInCodespace, {
+        authKey: options.tailscale.authKey,
+        controlServer: options.tailscale.controlServer,
+      });
     }
 
     // Apply runtime config (always — starts sudocode server, keepalive, port forwarding)
