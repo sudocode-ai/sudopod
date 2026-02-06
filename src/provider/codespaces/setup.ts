@@ -11,6 +11,8 @@
 
 import type { SetupConfig } from '../types.js';
 import type { ExecResult } from './cli.js';
+import type { ResolvedService } from '../../services/registry.js';
+import { getServiceDefinition, resolveService } from '../../services/registry.js';
 import { ExecutionError } from '../errors.js';
 
 /**
@@ -37,8 +39,9 @@ export interface TailscaleSetupResult {
 }
 
 interface TailscaleConfig {
-  authKey: string;
+  authKey?: string;
   controlServer?: string;
+  stateDir?: string;
 }
 
 /**
@@ -59,33 +62,6 @@ async function execOrThrow(
     throw new ExecutionError('codespaces', command, result.exitCode, details);
   }
   return result;
-}
-
-/**
- * Ensure the codespace has Node.js >= 18 available.
- *
- * Default GitHub Codespace images ship with Node 16 via nvm. Sudocode
- * requires Node >= 18. This function checks the current version and
- * installs Node 20 via nvm if needed, setting it as the default.
- */
-async function ensureModernNode(
-  codespaceName: string,
-  exec: ExecFn,
-): Promise<void> {
-  const versionCheck = await exec(codespaceName, 'node --version');
-  const match = versionCheck.stdout.trim().match(/^v(\d+)\./);
-  const major = match ? parseInt(match[1], 10) : 0;
-
-  if (major >= 18) return;
-
-  // nvm is pre-installed in default codespace images. Install Node 20
-  // and set it as the default so subsequent commands use it.
-  await execOrThrow(
-    exec,
-    codespaceName,
-    'nvm install 20 && nvm alias default 20',
-    { timeout: 120_000 },
-  );
 }
 
 /**
@@ -124,9 +100,9 @@ export async function installSudocode(
 /**
  * Apply optional one-time setup configuration to a newly created codespace.
  *
- * Called after installSudocode(). Executes the following steps in order:
- * 1. Configure model credentials (Anthropic/Claude)
- * 2. Install agents
+ * Executes the following steps in order:
+ * 1. Configure credentials (Anthropic/Claude)
+ * 2. Install services from registry
  * 3. Configure Tailscale (if specified)
  * 4. Run user setup script
  *
@@ -139,13 +115,13 @@ export async function applySetupConfig(
   exec: ExecFn,
   setup: SetupConfig
 ): Promise<void> {
-  // 1. Configure model credentials
-  if (setup.models?.claudeLtt) {
+  // 1. Configure credentials
+  if (setup.credentials?.claudeLtt) {
     await exec(codespaceName, 'mkdir -p ~/.claude ~/.config/claude');
     const creds = JSON.stringify({
       claudeAiOauth: {
-        accessToken: setup.models.claudeLtt,
-        refreshToken: setup.models.claudeLtt,
+        accessToken: setup.credentials.claudeLtt,
+        refreshToken: setup.credentials.claudeLtt,
         expiresAt: 9999999999999,
         scopes: ['user:inference', 'user:profile'],
       },
@@ -157,10 +133,16 @@ export async function applySetupConfig(
     );
   }
 
-  // 2. Install agents
-  if (setup.agents?.install?.length) {
-    for (const agent of setup.agents.install) {
-      await exec(codespaceName, `sudocode agent install ${agent}`);
+  // 2. Install services from registry
+  if (setup.services?.length) {
+    for (const svc of setup.services) {
+      const def = getServiceDefinition(svc.name);
+      if (!def) {
+        throw new ExecutionError('codespaces', `Unknown service: ${svc.name}`, 1, '');
+      }
+      // Skip services with empty install commands
+      if (!def.install) continue;
+      await exec(codespaceName, def.install);
     }
   }
 
@@ -169,6 +151,7 @@ export async function applySetupConfig(
     await setupTailscale(codespaceName, exec, {
       authKey: setup.tailscale.authKey,
       controlServer: setup.tailscale.controlServer,
+      stateDir: setup.tailscale.stateDir,
     });
   }
 
@@ -184,6 +167,7 @@ export async function applySetupConfig(
 
 /**
  * Build the `tailscale up` command string with all required flags.
+ * When authKey is omitted (reconnection from persisted state), --authkey is not included.
  */
 function buildTailscaleUpArgs(
   codespaceName: string,
@@ -191,10 +175,16 @@ function buildTailscaleUpArgs(
 ): string {
   const args = [
     'sudo tailscale up',
-    `--authkey=${config.authKey}`,
     '--accept-dns=false',
     `--hostname=${codespaceName}`,
   ];
+  if (config.authKey) {
+    args.splice(1, 0, `--authkey=${config.authKey}`);
+  } else {
+    // Reconnection from persisted state — use --reset to avoid
+    // "changing settings requires mentioning all non-default flags" error
+    args.push('--reset');
+  }
   if (config.controlServer) {
     args.push(`--login-server=${config.controlServer}`);
   }
@@ -230,19 +220,25 @@ async function joinTailnet(
   throw lastError;
 }
 
+/** Default state directory — on a volume that persists across codespace stop/start. */
+export const DEFAULT_STATE_DIR = '/workspaces/.tailscale';
+
 /**
  * Start the tailscaled daemon manually (codespaces lack systemd).
  * Creates state/socket directories, starts the daemon in background,
  * and waits for the socket to appear (confirming the daemon is ready).
+ *
+ * @param stateDir - Directory for persisting daemon state. Defaults to /workspaces/.tailscale.
  */
 async function startTailscaleDaemon(
   codespaceName: string,
   exec: ExecFn,
+  stateDir: string = DEFAULT_STATE_DIR,
 ): Promise<void> {
   await execOrThrow(
     exec,
     codespaceName,
-    'sudo mkdir -p /var/lib/tailscale /var/run/tailscale',
+    `sudo mkdir -p ${stateDir} /var/run/tailscale`,
   );
 
   // Start daemon in background with output redirected to a log file.
@@ -250,7 +246,7 @@ async function startTailscaleDaemon(
   // prevents the session from returning.
   await exec(
     codespaceName,
-    'sudo tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &',
+    `sudo tailscaled --state=${stateDir}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &`,
   );
 
   // Wait for the socket to appear — confirms the daemon is ready for commands.
@@ -280,6 +276,7 @@ export async function setupTailscale(
   exec: ExecFn,
   config: TailscaleConfig,
 ): Promise<TailscaleSetupResult> {
+  const stateDir = config.stateDir ?? DEFAULT_STATE_DIR;
   const upCmd = buildTailscaleUpArgs(codespaceName, config);
 
   // Probe 1: Is tailscale installed?
@@ -297,7 +294,7 @@ export async function setupTailscale(
       { timeout: 120_000 },
     );
 
-    await startTailscaleDaemon(codespaceName, exec);
+    await startTailscaleDaemon(codespaceName, exec, stateDir);
     await joinTailnet(exec, codespaceName, upCmd);
 
     return { tier: 'installed', hostname: codespaceName };
@@ -315,7 +312,7 @@ export async function setupTailscale(
 
   if (!daemonIsRunning) {
     // === TIER 2: Installed but daemon not running ===
-    await startTailscaleDaemon(codespaceName, exec);
+    await startTailscaleDaemon(codespaceName, exec, stateDir);
     await joinTailnet(exec, codespaceName, upCmd);
 
     return { tier: 'started-daemon', hostname: codespaceName };
@@ -325,4 +322,42 @@ export async function setupTailscale(
   await joinTailnet(exec, codespaceName, upCmd);
 
   return { tier: 'already-running', hostname: codespaceName };
+}
+
+// ============================================================================
+// Service Management
+// ============================================================================
+
+/**
+ * Start resolved services that are not already running.
+ * Checks each service using its `check` command, starts if not running.
+ * Only services with a `start` command are started (tools are install-only).
+ *
+ * @returns List of ports for services that were started (newly or already running).
+ */
+export async function startServices(
+  name: string,
+  exec: ExecFn,
+  services: ResolvedService[],
+): Promise<number[]> {
+  const startedPorts: number[] = [];
+
+  for (const svc of services) {
+    if (!svc.start || !svc.port) continue;
+
+    // Check if already running
+    if (svc.check) {
+      const checkResult = await exec(name, svc.check);
+      if (checkResult.stdout.trim()) {
+        startedPorts.push(svc.port);
+        continue;
+      }
+    }
+
+    // Start the service
+    await exec(name, svc.start, { background: true });
+    startedPorts.push(svc.port);
+  }
+
+  return startedPorts;
 }

@@ -7,9 +7,11 @@ import {
   installSudocode,
   applySetupConfig,
   setupTailscale,
+  startServices,
 } from '../../../../src/provider/codespaces/setup.js';
 import type { ExecFn } from '../../../../src/provider/codespaces/setup.js';
 import type { SetupConfig } from '../../../../src/provider/types.js';
+import type { ResolvedService } from '../../../../src/services/registry.js';
 import { ExecutionError } from '../../../../src/provider/errors.js';
 
 describe('installSudocode', () => {
@@ -24,13 +26,13 @@ describe('installSudocode', () => {
     });
   });
 
-  it('should install sudocode and init as separate steps', async () => {
+  it('should install sudocode with nvm setup in a single command', async () => {
     await installSudocode('my-cs', mockExec);
 
-    expect(execCalls).toHaveLength(2);
-    expect(execCalls[0].command).toBe('npm install -g sudocode');
+    expect(execCalls).toHaveLength(1);
+    expect(execCalls[0].command).toContain('npm install -g sudocode');
+    expect(execCalls[0].command).toContain('sudocode init');
     expect(execCalls[0].options).toEqual({ timeout: 300_000 });
-    expect(execCalls[1].command).toBe('sudocode init');
   });
 
   it('should pass the codespace name to exec', async () => {
@@ -62,7 +64,7 @@ describe('applySetupConfig', () => {
 
   it('should configure Claude credentials when claudeLtt is provided', async () => {
     const setup: SetupConfig = {
-      models: { claudeLtt: 'test-token-123' },
+      credentials: { claudeLtt: 'test-token-123' },
     };
 
     await applySetupConfig('my-cs', mockExec, setup);
@@ -93,41 +95,58 @@ describe('applySetupConfig', () => {
     ).toBe(true);
   });
 
-  it('should install agents in order', async () => {
+  it('should install services using registry install commands', async () => {
     const setup: SetupConfig = {
-      agents: { install: ['claude', 'cursor'] },
+      services: [
+        { name: 'claude-code' },
+        { name: 'aider' },
+      ],
     };
 
     await applySetupConfig('my-cs', mockExec, setup);
 
     expect(execCalls[0]).toEqual({
       name: 'my-cs',
-      command: 'sudocode agent install claude',
+      command: 'npm install -g @anthropic-ai/claude-code',
     });
     expect(execCalls[1]).toEqual({
       name: 'my-cs',
-      command: 'sudocode agent install cursor',
+      command: 'pip install aider-chat',
     });
   });
 
-  it('should skip agents when none specified', async () => {
-    await applySetupConfig('my-cs', mockExec, {});
-
-    expect(
-      execCalls.every((c) => !c.command.includes('agent install'))
-    ).toBe(true);
-  });
-
-  it('should skip agents when install array is empty', async () => {
+  it('should install sudocode when explicitly listed in services', async () => {
     const setup: SetupConfig = {
-      agents: { install: [] },
+      services: [
+        { name: 'sudocode' },
+        { name: 'claude-code' },
+      ],
     };
 
     await applySetupConfig('my-cs', mockExec, setup);
 
+    // Both sudocode and claude-code should be installed
+    expect(execCalls).toHaveLength(2);
+    expect(execCalls[0].command).toContain('npm install -g sudocode');
+    expect(execCalls[1].command).toContain('@anthropic-ai/claude-code');
+  });
+
+  it('should skip services when none specified', async () => {
+    await applySetupConfig('my-cs', mockExec, {});
+
     expect(
-      execCalls.every((c) => !c.command.includes('agent install'))
+      execCalls.every((c) => !c.command.includes('install'))
     ).toBe(true);
+  });
+
+  it('should throw for unknown service name', async () => {
+    const setup: SetupConfig = {
+      services: [{ name: 'nonexistent-tool' }],
+    };
+
+    await expect(
+      applySetupConfig('my-cs', mockExec, setup)
+    ).rejects.toThrow(ExecutionError);
   });
 
   it('should configure Tailscale with auth key and new flags', async () => {
@@ -189,8 +208,8 @@ describe('applySetupConfig', () => {
 
   it('should execute all steps in the correct order', async () => {
     const setup: SetupConfig = {
-      models: { claudeLtt: 'token-123' },
-      agents: { install: ['claude'] },
+      credentials: { claudeLtt: 'token-123' },
+      services: [{ name: 'claude-code' }],
       tailscale: { authKey: 'tskey-abc' },
       setupScript: 'echo done',
     };
@@ -199,12 +218,12 @@ describe('applySetupConfig', () => {
 
     const commands = execCalls.map((c) => c.command);
 
-    // 1. Model credentials
+    // 1. Credentials
     expect(commands[0]).toContain('mkdir -p ~/.claude');
     expect(commands[1]).toContain('.credentials.json');
 
-    // 2. Agents
-    expect(commands[2]).toBe('sudocode agent install claude');
+    // 2. Services (claude-code via registry)
+    expect(commands[2]).toContain('@anthropic-ai/claude-code');
 
     // 3. Tailscale (tier 1 path: which → status → tailscale up)
     expect(commands[3]).toBe('which tailscale');
@@ -217,8 +236,8 @@ describe('applySetupConfig', () => {
 
   it('should pass the codespace name to all exec calls', async () => {
     const setup: SetupConfig = {
-      models: { claudeLtt: 'tok' },
-      agents: { install: ['claude'] },
+      credentials: { claudeLtt: 'tok' },
+      services: [{ name: 'claude-code' }],
       setupScript: 'echo hi',
     };
 
@@ -227,6 +246,123 @@ describe('applySetupConfig', () => {
     for (const call of execCalls) {
       expect(call.name).toBe('specific-cs-name');
     }
+  });
+});
+
+// ============================================================================
+// startServices
+// ============================================================================
+
+describe('startServices', () => {
+  let execCalls: Array<{ name: string; command: string; options?: object }>;
+
+  function createMockExec(
+    responses: Record<string, Partial<{ exitCode: number; stdout: string; stderr: string }>> = {},
+  ): ExecFn {
+    return vi.fn(async (name: string, command: string, options?: object) => {
+      execCalls.push({ name, command, options });
+      for (const [pattern, result] of Object.entries(responses)) {
+        if (command.includes(pattern)) {
+          return { exitCode: 0, stdout: '', stderr: '', ...result };
+        }
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+  }
+
+  beforeEach(() => {
+    execCalls = [];
+  });
+
+  it('should start services that are not running', async () => {
+    const mockExec = createMockExec({
+      'pgrep': { exitCode: 0, stdout: '' }, // not running
+    });
+
+    const services: ResolvedService[] = [
+      {
+        name: 'sudocode',
+        type: 'service',
+        install: '',
+        start: 'nohup sudocode server --port 3000 > /tmp/sudocode-3000.log 2>&1',
+        check: 'pgrep -f "sudocode server.*--port 3000" || true',
+        port: 3000,
+      },
+    ];
+
+    const ports = await startServices('my-cs', mockExec, services);
+
+    expect(ports).toEqual([3000]);
+    // Should have called check then start
+    const commands = execCalls.map(c => c.command);
+    expect(commands).toContainEqual(expect.stringContaining('pgrep'));
+    expect(commands).toContainEqual(expect.stringContaining('nohup sudocode server'));
+  });
+
+  it('should skip services that are already running', async () => {
+    const mockExec = createMockExec({
+      'pgrep': { exitCode: 0, stdout: '12345' }, // already running
+    });
+
+    const services: ResolvedService[] = [
+      {
+        name: 'sudocode',
+        type: 'service',
+        install: '',
+        start: 'nohup sudocode server --port 3000 > /tmp/sudocode-3000.log 2>&1',
+        check: 'pgrep -f "sudocode server.*--port 3000" || true',
+        port: 3000,
+      },
+    ];
+
+    const ports = await startServices('my-cs', mockExec, services);
+
+    expect(ports).toEqual([3000]);
+    // Should have called check but NOT start
+    const commands = execCalls.map(c => c.command);
+    expect(commands).toContainEqual(expect.stringContaining('pgrep'));
+    expect(commands).not.toContainEqual(expect.stringContaining('nohup'));
+  });
+
+  it('should skip tools (no start command)', async () => {
+    const mockExec = createMockExec();
+
+    const services: ResolvedService[] = [
+      {
+        name: 'claude-code',
+        type: 'tool',
+        install: 'npm install -g @anthropic-ai/claude-code',
+      },
+    ];
+
+    const ports = await startServices('my-cs', mockExec, services);
+
+    expect(ports).toEqual([]);
+    expect(execCalls).toHaveLength(0);
+  });
+
+  it('should return ports for all startable services', async () => {
+    const mockExec = createMockExec();
+
+    const services: ResolvedService[] = [
+      {
+        name: 'sudocode',
+        type: 'service',
+        install: '',
+        start: 'nohup sudocode server --port 3000',
+        port: 3000,
+      },
+      {
+        name: 'claude-code',
+        type: 'tool',
+        install: 'npm install -g @anthropic-ai/claude-code',
+      },
+    ];
+
+    const ports = await startServices('my-cs', mockExec, services);
+
+    // Only sudocode has start + port
+    expect(ports).toEqual([3000]);
   });
 });
 
@@ -288,9 +424,9 @@ describe('setupTailscale', () => {
       expect.stringContaining('tailscale.com/install.sh'),
     );
 
-    // Start daemon
+    // Start daemon (state dir defaults to /workspaces/.tailscale)
     expect(commands).toContainEqual(
-      expect.stringContaining('sudo mkdir -p /var/lib/tailscale'),
+      expect.stringContaining('sudo mkdir -p /workspaces/.tailscale'),
     );
     expect(commands).toContainEqual(
       expect.stringContaining('sudo tailscaled'),

@@ -17,9 +17,8 @@ export type {
   HubConfig,
 } from './types.js';
 
-// Create/runtime types
-export type { CreateOptions, SetupConfig } from './types.js';
-export type { RuntimeConfig, ResumeOptions, LifecycleConfig } from './types.js';
+// Create types
+export type { CreateOptions, SetupConfig, ServiceConfig } from './types.js';
 
 // Workspace types
 export type {
@@ -48,3 +47,4 @@ export { createProvider } from './factory.js';
 
 // Provider implementations
 export { CodespacesProvider } from './codespaces/index.js';
+export { CoderProvider } from './coder/index.js';

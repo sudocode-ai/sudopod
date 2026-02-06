@@ -9,6 +9,7 @@
 import type { Provider, CodespacesConfig, CoderConfig, HubConfig } from './types.js';
 import { ConfigurationError } from './errors.js';
 import { CodespacesProvider } from './codespaces/index.js';
+import { CoderProvider } from './coder/index.js';
 
 /**
  * Create a provider instance.
@@ -27,8 +28,7 @@ export function createProvider(provider: string, config: CodespacesConfig | Code
       return new CodespacesProvider(config as CodespacesConfig);
 
     case 'coder':
-      // TODO: return new CoderProvider(config as CoderConfig);
-      throw new ConfigurationError('coder', 'Coder provider not yet implemented');
+      return new CoderProvider(config as CoderConfig);
 
     case 'hub':
       // TODO: return new HubProvider(config as HubConfig);

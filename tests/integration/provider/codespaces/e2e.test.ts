@@ -192,13 +192,11 @@ describe('Codespaces Provider E2E: Create + Connectivity + Resume', () => {
       retentionDays: RETENTION_DAYS,
       machineType: TEST_MACHINE,
       setup: {
+        services: [{ name: 'sudocode', port: SUDOCODE_PORT }],
         tailscale: {
           authKey: codespacePreauthKey,
           controlServer: ngrok.url,
         },
-      },
-      runtime: {
-        port: SUDOCODE_PORT,
       },
     });
     console.log(`  Workspace created: ${workspace.id} (status=${workspace.status})`);
@@ -389,16 +387,10 @@ describe('Codespaces Provider E2E: Create + Connectivity + Resume', () => {
     const resumePreauthKey = await headscale.createPreauthKey(headscaleUserId);
     console.log(`  Resume preauthkey: ${resumePreauthKey.substring(0, 12)}...`);
 
-    // 3. Resume via provider API — starts the codespace, re-joins Tailscale
-    //    with the fresh key, then applies runtime config
+    // 3. Resume via provider API — starts the codespace, reads manifest
+    //    from disk, re-joins Tailscale, then applies runtime config
     console.log('Resuming workspace via provider.resume()...');
-    workspace = await provider.resume(workspace.id, {
-      runtime: { port: SUDOCODE_PORT },
-      tailscale: {
-        authKey: resumePreauthKey,
-        controlServer: ngrok!.url,
-      },
-    });
+    workspace = await provider.resume(workspace.id);
     console.log(`  Workspace resumed: status=${workspace.status}`);
     expect(workspace.status).toBe('running');
 

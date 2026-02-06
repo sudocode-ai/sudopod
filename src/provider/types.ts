@@ -75,16 +75,16 @@ export interface Provider {
    * Resume/reconnect to an existing workspace.
    * Idempotent - ensures:
    *   1. VM is running (starts if stopped)
-   *   2. Sudocode server is running (starts if not)
+   *   2. Services are running (starts if not, using on-disk manifest)
    *   3. Port forwarding is set up
    *   4. Keepalive is bumped
    *
    * Safe to call multiple times - no-ops if already in desired state.
+   * Runtime config is read from the on-disk workspace manifest.
    *
    * @param workspaceId - Optional. If omitted, resumes the most recently created workspace.
-   * @param options - Runtime options for the session.
    */
-  resume(workspaceId?: string, options?: ResumeOptions): Promise<Workspace>;
+  resume(workspaceId?: string): Promise<Workspace>;
 
   /**
    * Stop a running workspace (pause). VM state is preserved.
@@ -161,9 +161,22 @@ export interface CreateOptions {
 
   /** One-time setup config - applied only during workspace creation */
   setup?: SetupConfig;
+}
 
-  /** Runtime config - also applied during create, and on every resume */
-  runtime?: RuntimeConfig;
+// ============================================================================
+// Service Config
+// ============================================================================
+
+/**
+ * Configuration for a service to install/run in a workspace.
+ * The name must match an entry in the service registry.
+ */
+export interface ServiceConfig {
+  /** Service name — must match a registry entry (e.g., 'sudocode', 'claude-code', 'aider'). */
+  name: string;
+
+  /** Override the registry's default port for this service. */
+  port?: number;
 }
 
 // ============================================================================
@@ -179,19 +192,26 @@ export interface CreateOptions {
  */
 export interface SetupConfig {
   /**
-   * Agents to install during workspace creation.
-   * These are installed once and persist across restarts.
+   * Services to install and optionally run during workspace creation.
+   * Names must match entries in the service registry (e.g., 'sudocode', 'claude-code', 'aider').
+   * Each entry can override the registry's default port.
    */
-  agents?: {
-    install: string[]; // e.g., ['claude']
+  services?: ServiceConfig[];
+
+  /**
+   * Credentials for the workspace.
+   * Configured once during creation.
+   */
+  credentials?: {
+    claudeLtt?: string;
   };
 
   /**
-   * LLM/model configuration for the workspace.
-   * Configured once during creation.
+   * Lifecycle configuration.
    */
-  models?: {
-    claudeLtt?: string;
+  lifecycle?: {
+    /** Minutes of inactivity before allowing workspace to auto-stop. Default: 60. */
+    idleTimeoutMinutes?: number;
   };
 
   /**
@@ -229,82 +249,18 @@ export interface SetupConfig {
      * (defaults to Tailscale control plane).
      */
     controlServer?: string;
+
+    /**
+     * Directory for persisting Tailscale daemon state (tailscaled.state).
+     * Must be on a volume that survives codespace stop/start so that
+     * Tailscale can reconnect automatically without a fresh auth key.
+     *
+     * Default: /workspaces/.tailscale
+     *
+     * @see s-9cl3 design decision #16
+     */
+    stateDir?: string;
   };
-}
-
-// ============================================================================
-// Runtime Config (Per-Resume)
-// ============================================================================
-
-/**
- * Runtime config - passed on every resume() call.
- * These are settings needed to reconnect to a workspace.
- *
- * IMPORTANT: This is intentionally minimal. One-time setup (agents, scripts,
- * tailscale) belongs in SetupConfig and is only applied during create().
- */
-export interface RuntimeConfig {
-  /**
-   * Sudocode server port. Default: 3000.
-   * User can override if 3000 conflicts with their application.
-   */
-  port?: number;
-
-  /**
-   * Lifecycle/keepalive configuration.
-   * Can be adjusted on each resume (e.g., user wants different timeout).
-   */
-  lifecycle?: LifecycleConfig;
-}
-
-// ============================================================================
-// Resume Options
-// ============================================================================
-
-/**
- * Config for resuming an existing workspace.
- * Contains runtime settings and optional Tailscale re-join config.
- *
- * NOTE: Tailscale state does not persist across codespace stop/start
- * (the /var/lib/tailscale/ directory is wiped). Callers must provide
- * tailscale config on every resume to re-join the tailnet.
- */
-export interface ResumeOptions {
-  runtime?: RuntimeConfig;
-
-  /**
-   * Tailscale configuration for re-joining the tailnet on resume.
-   *
-   * Codespace stop/start wipes Tailscale state, so the daemon must be
-   * re-installed or re-joined on every resume. The tiered setup handles
-   * this gracefully — if the binary is still installed, it skips
-   * installation and just starts the daemon + joins.
-   *
-   * @see s-k316 - Codespaces Tailscale Integration
-   */
-  tailscale?: {
-    authKey: string;
-    controlServer?: string;
-  };
-}
-
-// ============================================================================
-// Lifecycle Config
-// ============================================================================
-
-/**
- * Lifecycle configuration for workspace keepalive behavior.
- *
- * This defines the desired behavior — how long inactivity is tolerated
- * before the workspace can auto-stop. The mechanism for detecting activity
- * and extending deadlines is an implementation detail of each provider.
- */
-export interface LifecycleConfig {
-  /**
-   * Minutes of sudocode inactivity before allowing workspace to auto-stop.
-   * Default: 60 (1 hour)
-   */
-  idleTimeoutMinutes?: number;
 }
 
 // ============================================================================

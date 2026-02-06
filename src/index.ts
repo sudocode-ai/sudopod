@@ -21,16 +21,34 @@ export type {
 } from './provider/index.js';
 
 // ============================================================================
-// Create / Runtime Types
+// Create Types
 // ============================================================================
 
 export type {
   CreateOptions,
   SetupConfig,
-  RuntimeConfig,
-  ResumeOptions,
-  LifecycleConfig,
+  ServiceConfig,
 } from './provider/index.js';
+
+// ============================================================================
+// Service Types
+// ============================================================================
+
+export type {
+  ServiceType,
+  ServiceDefinition,
+  ResolvedService,
+  WorkspaceManifest,
+} from './services/index.js';
+
+export {
+  getServiceDefinition,
+  resolveService,
+  getBuiltInServiceNames,
+  MANIFEST_PATH,
+  writeManifest,
+  readManifest,
+} from './services/index.js';
 
 // ============================================================================
 // Workspace Types
