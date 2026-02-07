@@ -394,10 +394,9 @@ describe('Coder Provider E2E: Create + Connectivity + Resume', () => {
     expect(workspace.status).toBe('running');
 
     // 3. Check if Tailscale state survived the stop/start cycle.
-    //    Envbuilder templates re-initialize /workspaces on each start, so
-    //    runtime state (manifest, tailscale, node) may be lost. If the manifest
-    //    is present, Tailscale reconnection was handled by the provider. If not,
-    //    this is expected for envbuilder-based templates.
+    //    With a persistent EBS volume mounted at /workspaces, the manifest
+    //    and Tailscale state survive stop/start. If the manifest is present,
+    //    Tailscale reconnection was handled by the provider.
     const manifestCheck = await exec(workspaceName, 'cat /workspaces/.sudopod/manifest.json 2>/dev/null || echo ""');
     const manifestSurvived = manifestCheck.stdout.trim().length > 0;
     console.log(`  Manifest survived stop/start: ${manifestSurvived}`);
