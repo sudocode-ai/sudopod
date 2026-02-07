@@ -14,6 +14,9 @@
 
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { ExecResult } from '../types.js';
+
+export type { ExecResult };
 
 // All functions use execAsync — the promisified form of exec.
 const execAsync = promisify(exec);
@@ -21,15 +24,6 @@ const execAsync = promisify(exec);
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * Result of executing a command in a codespace via SSH.
- */
-export interface ExecResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
 
 /**
  * Codespace info as returned by the gh CLI (JSON output).

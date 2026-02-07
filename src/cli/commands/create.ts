@@ -1,16 +1,17 @@
-import type { CreateOptions } from '../../provider/types.js';
+import { execSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import type { CreateOptions, ServiceConfig } from '../../provider/types.js';
 import type { CommandContext } from '../types.js';
 import { printWorkspace, printJson, serializeWorkspace, printError } from '../output.js';
 
 export interface CreateCommandOptions {
-  name: string;
-  repo: string;
+  repo?: string;
   branch?: string;
   retention: string;
-  machine?: string;
+  machine: string;
   service?: string[];
   setupScript?: string;
-  port?: string;
+  port: string;
   idleTimeout?: string;
   tailscaleAuthKey?: string;
   tailscaleServer?: string;
@@ -21,11 +22,13 @@ export async function handleCreate(
   opts: CreateCommandOptions
 ): Promise<void> {
   try {
-    const [owner, repo] = parseRepo(opts.repo);
+    const [owner, repo] = opts.repo ? parseRepo(opts.repo) : detectRepo();
+    const branch = opts.branch ?? detectBranch();
+    const name = generateName(repo, branch);
 
     const createOpts: CreateOptions = {
-      name: opts.name,
-      repository: { owner, repo, branch: opts.branch },
+      name,
+      repository: { owner, repo, branch },
       retentionDays: parseInt(opts.retention, 10),
       machineType: opts.machine,
       setup: buildSetupConfig(opts),
@@ -52,17 +55,69 @@ function parseRepo(repo: string): [string, string] {
   return [parts[0], parts[1]];
 }
 
+function detectRepo(): [string, string] {
+  let url: string;
+  try {
+    url = execSync('git remote get-url origin', { encoding: 'utf-8' }).trim();
+  } catch {
+    throw new Error(
+      'Could not detect git repo. Use --repo <owner/repo> or run from inside a git repository.'
+    );
+  }
+
+  // Handle SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git)
+  const match = url.match(/(?:github\.com[:/])([^/]+)\/([^/.]+?)(?:\.git)?$/);
+  if (!match) {
+    throw new Error(
+      `Could not parse owner/repo from remote URL: "${url}". Use --repo <owner/repo>.`
+    );
+  }
+  return [match[1], match[2]];
+}
+
+function detectBranch(): string {
+  try {
+    const branch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+    if (!branch) throw new Error('detached HEAD');
+    return branch;
+  } catch {
+    return 'main';
+  }
+}
+
+function generateName(repo: string, branch: string): string {
+  const id = randomBytes(3).toString('hex');
+  return `${repo}-${branch}-${id}`;
+}
+
+function parseService(value: string): ServiceConfig {
+  const colonIdx = value.lastIndexOf(':');
+  if (colonIdx > 0) {
+    const maybeName = value.slice(0, colonIdx);
+    const maybePort = parseInt(value.slice(colonIdx + 1), 10);
+    if (!isNaN(maybePort) && maybePort > 0) {
+      return { name: maybeName, port: maybePort };
+    }
+  }
+  return { name: value };
+}
+
 function buildSetupConfig(opts: CreateCommandOptions) {
+  const services = opts.service?.map(parseService);
+  const port = parseInt(opts.port, 10);
+
   const hasSetup =
-    opts.service?.length ||
+    services?.length ||
     opts.setupScript ||
     opts.idleTimeout ||
-    opts.tailscaleAuthKey;
+    opts.tailscaleAuthKey ||
+    port !== 3000;
 
   if (!hasSetup) return undefined;
 
   return {
-    services: opts.service?.map(name => ({ name })),
+    services,
+    port,
     lifecycle: opts.idleTimeout
       ? { idleTimeoutMinutes: parseInt(opts.idleTimeout, 10) }
       : undefined,

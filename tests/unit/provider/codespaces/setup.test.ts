@@ -9,7 +9,7 @@ import {
   setupTailscale,
   startServices,
 } from '../../../../src/provider/codespaces/setup.js';
-import type { ExecFn } from '../../../../src/provider/codespaces/setup.js';
+import type { ExecFn } from '../../../../src/provider/types.js';
 import type { SetupConfig } from '../../../../src/provider/types.js';
 import type { ResolvedService } from '../../../../src/services/registry.js';
 import { ExecutionError } from '../../../../src/provider/errors.js';

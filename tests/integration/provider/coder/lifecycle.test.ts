@@ -14,7 +14,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createProvider } from '../../../../src/provider/factory.js';
 import { CoderProvider } from '../../../../src/provider/coder/index.js';
 import { WorkspaceNotFoundError } from '../../../../src/provider/errors.js';
-import type { Provider, Workspace } from '../../../../src/provider/types.js';
+import { createCoderExecFn } from '../../../../src/provider/coder/cli.js';
+import type { Provider, Workspace, ExecFn } from '../../../../src/provider/types.js';
+import type { WorkspaceManifest } from '../../../../src/services/manifest.js';
 
 // =============================================================================
 // Environment Detection
@@ -39,6 +41,7 @@ const skipReason = env
 describe.skipIf(skipReason)('CoderProvider Lifecycle (integration)', () => {
   let provider: Provider;
   let workspace: Workspace | undefined;
+  let exec: ExecFn;
   const workspaceName = `provider-test-${Date.now()}`;
 
   beforeAll(() => {
@@ -46,6 +49,7 @@ describe.skipIf(skipReason)('CoderProvider Lifecycle (integration)', () => {
       url: env!.url,
       authToken: env!.token,
     });
+    exec = createCoderExecFn({ coderUrl: env!.url, coderToken: env!.token });
   });
 
   afterAll(async () => {
@@ -76,6 +80,9 @@ describe.skipIf(skipReason)('CoderProvider Lifecycle (integration)', () => {
       name: workspaceName,
       repository: { owner: 'octocat', repo: 'Hello-World' },
       retentionDays: 1,
+      setup: {
+        services: [{ name: 'sudocode' }],
+      },
     });
 
     expect(workspace).toBeDefined();
@@ -85,6 +92,24 @@ describe.skipIf(skipReason)('CoderProvider Lifecycle (integration)', () => {
     expect(workspace.connection.ssh.command).toContain(workspaceName);
     expect(workspace.connection.urls?.dashboard).toContain(workspaceName);
   }, 300_000);
+
+  // ---------------------------------------------------------------------------
+  // manifest after create
+  // ---------------------------------------------------------------------------
+
+  it('manifest is written to disk after create', async () => {
+    expect(workspace).toBeDefined();
+    const result = await exec(workspaceName, 'cat /home/coder/.sudopod/manifest.json 2>/dev/null || true');
+    expect(result.exitCode).toBe(0);
+    const manifest: WorkspaceManifest = JSON.parse(result.stdout.trim());
+    expect(manifest.version).toBe(1);
+    expect(manifest.services).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'sudocode', port: 3000 }),
+      ]),
+    );
+    expect(manifest.createdAt).toBeDefined();
+  }, 30_000);
 
   // ---------------------------------------------------------------------------
   // get()
@@ -149,6 +174,23 @@ describe.skipIf(skipReason)('CoderProvider Lifecycle (integration)', () => {
     expect(resumed.status).toBe('running');
     expect(resumed.id).toBe(workspace!.id);
   }, 300_000);
+
+  // ---------------------------------------------------------------------------
+  // manifest after stop/resume
+  // ---------------------------------------------------------------------------
+
+  it('manifest persists after stop/resume cycle', async () => {
+    expect(workspace).toBeDefined();
+    const result = await exec(workspaceName, 'cat /home/coder/.sudopod/manifest.json 2>/dev/null || true');
+    expect(result.exitCode).toBe(0);
+    const manifest: WorkspaceManifest = JSON.parse(result.stdout.trim());
+    expect(manifest.version).toBe(1);
+    expect(manifest.services).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'sudocode' }),
+      ]),
+    );
+  }, 30_000);
 
   // ---------------------------------------------------------------------------
   // delete()

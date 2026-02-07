@@ -364,3 +364,26 @@ export interface ListWorkspacesOptions {
   /** Maximum results */
   limit?: number;
 }
+
+// ============================================================================
+// Exec Types
+// ============================================================================
+
+/**
+ * Result of executing a command in a workspace via SSH.
+ */
+export interface ExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Function signature for executing commands in a workspace.
+ * Decoupled from provider-specific CLI modules for testability.
+ */
+export type ExecFn = (
+  name: string,
+  command: string,
+  options?: { background?: boolean; timeout?: number }
+) => Promise<ExecResult>;

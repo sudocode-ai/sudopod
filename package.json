@@ -27,6 +27,7 @@
     "test:integration:tailscale": "RUN_INTEGRATION_TESTS=1 vitest run --config vitest.integration.tailscale.config.ts",
     "test:integration:codespaces": "vitest run --config vitest.integration.codespaces.config.ts",
     "test:e2e:codespaces": "RUN_INTEGRATION_TESTS=1 vitest run tests/integration/provider/codespaces/e2e.test.ts --config vitest.integration.codespaces.config.ts",
+    "test:e2e:coder": "RUN_INTEGRATION_TESTS=1 vitest run tests/integration/provider/coder/e2e.test.ts --config vitest.integration.coder.config.ts",
     "test:integration:client": "vitest run --config vitest.integration.client.config.ts",
     "test:package": "npm run build && node scripts/package-validation-test.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",

@@ -4,6 +4,10 @@
  * Thin layer that implements the Provider interface by delegating to
  * CoderClient from the coder-sdk. Uses "me" for all operations.
  *
+ * Supports setup config processing, workspace manifest, and Tailscale —
+ * same capabilities as the Codespaces provider, adapted for Coder's
+ * environment (different paths, no port forwarding/keepalive needed).
+ *
  * @see s-6q31 - Self-Hosted Coder Provider spec
  * @see s-9cl3 - Unified Workspace Provider Architecture
  */
@@ -19,16 +23,32 @@ import type {
   Workspace,
   WorkspaceStatus,
   ListWorkspacesOptions,
+  ExecFn,
 } from '../types.js';
 import {
   ProviderError,
   WorkspaceNotFoundError,
   WorkspaceCreationError,
   WorkspaceStateError,
+  WorkspaceTimeoutError,
   AuthenticationError,
   AuthorizationError,
   ConfigurationError,
 } from '../errors.js';
+import { createCoderExecFn } from './cli.js';
+import { installSudocode, applySetupConfig, setupTailscale, startServices } from '../codespaces/setup.js';
+import { resolveService } from '../../services/registry.js';
+import { writeManifest, readManifest } from '../../services/manifest.js';
+import type { WorkspaceManifest } from '../../services/manifest.js';
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+// Paths on the /workspaces Docker volume — persists across stop/start.
+// /home/coder/ is ephemeral (rebuilt by envbuilder on each start).
+const CODER_MANIFEST_PATH = '/workspaces/.sudopod/manifest.json';
+const CODER_TAILSCALE_STATE_DIR = '/workspaces/.tailscale';
 
 // =============================================================================
 // Status Mapping
@@ -47,6 +67,10 @@ function mapWorkspaceStatusToCoderQuery(status: WorkspaceStatus): string {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // =============================================================================
 // CoderProvider
 // =============================================================================
@@ -54,12 +78,17 @@ function mapWorkspaceStatusToCoderQuery(status: WorkspaceStatus): string {
 export class CoderProvider implements Provider {
   readonly name = 'Coder';
   private client: CoderClient;
+  private exec: ExecFn;
   private contextPromise?: Promise<{ user: CoderUser; organizationId: string }>;
 
   constructor(private config: CoderConfig) {
     this.client = new CoderClient({
       baseUrl: config.url,
       token: config.authToken,
+    });
+    this.exec = createCoderExecFn({
+      coderUrl: config.url,
+      coderToken: config.authToken,
     });
   }
 
@@ -112,6 +141,52 @@ export class CoderProvider implements Provider {
         targetStatus: 'running',
       });
 
+      const workspaceName = ready.name;
+
+      // Install Node.js + sudocode — prerequisite for all workspaces
+      await installSudocode(workspaceName, this.exec);
+
+      // Apply optional one-time setup config (credentials, services, tailscale, scripts)
+      if (options.setup) {
+        // Override tailscale stateDir default to Coder path
+        const setupWithCoderDefaults = {
+          ...options.setup,
+          tailscale: options.setup.tailscale
+            ? {
+                ...options.setup.tailscale,
+                stateDir: options.setup.tailscale.stateDir ?? CODER_TAILSCALE_STATE_DIR,
+              }
+            : undefined,
+        };
+        await applySetupConfig(workspaceName, this.exec, setupWithCoderDefaults);
+      }
+
+      // Resolve services from setup config
+      const resolvedServices = (options.setup?.services ?? []).map(
+        svc => resolveService(svc.name, svc.port),
+      );
+
+      // Build and write manifest
+      const manifest: WorkspaceManifest = {
+        version: 1,
+        services: resolvedServices,
+        credentials: options.setup?.credentials,
+        tailscale: options.setup?.tailscale
+          ? {
+              stateDir: options.setup.tailscale.stateDir ?? CODER_TAILSCALE_STATE_DIR,
+              controlServer: options.setup.tailscale.controlServer,
+            }
+          : undefined,
+        lifecycle: options.setup?.lifecycle,
+        setupScript: options.setup?.setupScript,
+        createdAt: new Date().toISOString(),
+      };
+
+      await writeManifest(workspaceName, this.exec, manifest, CODER_MANIFEST_PATH);
+
+      // Apply runtime — start services, wait for ports
+      await this.applyManifestRuntime(workspaceName, manifest);
+
       return mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.config.url });
     } catch (err) {
       throw this.mapError(err, 'create');
@@ -143,11 +218,13 @@ export class CoderProvider implements Provider {
           workspaceId,
           targetStatus: 'running',
         });
+        await this.applyManifestOnResume(ready.name);
         return mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.config.url });
       }
 
-      // If already running, return as-is
+      // If already running, read manifest and apply runtime
       if (status === 'running') {
+        await this.applyManifestOnResume(workspace.name);
         return mapCoderWorkspaceToWorkspace(workspace, { baseUrl: this.config.url });
       }
 
@@ -162,6 +239,7 @@ export class CoderProvider implements Provider {
         if (settled.latest_build.status === 'stopped') {
           return this.resume(workspaceId);
         }
+        await this.applyManifestOnResume(settled.name);
         return mapCoderWorkspaceToWorkspace(settled, { baseUrl: this.config.url });
       }
 
@@ -242,6 +320,77 @@ export class CoderProvider implements Provider {
     } catch (err) {
       throw this.mapError(err, 'list');
     }
+  }
+
+  // ===========================================================================
+  // Private Helpers — Runtime
+  // ===========================================================================
+
+  /**
+   * Read manifest and apply all runtime config on resume.
+   *
+   * Envbuilder workspaces rebuild the container on stop/start, so system-level
+   * installs (Node.js, tailscale, sudocode) are lost. The manifest and tailscale
+   * state persist on the /workspaces volume. This method:
+   *   1. Reinstalls Node.js + sudocode if missing
+   *   2. Reconnects Tailscale (re-installing the binary if needed)
+   *   3. Restarts services
+   */
+  private async applyManifestOnResume(name: string): Promise<void> {
+    const manifest = await readManifest(name, this.exec, CODER_MANIFEST_PATH);
+    if (!manifest) return;
+
+    // Reinstall Node.js + sudocode if the binary is missing (envbuilder rebuild)
+    const nodeCheck = await this.exec(name, 'command -v node');
+    if (nodeCheck.exitCode !== 0) {
+      await installSudocode(name, this.exec);
+    }
+
+    // Reconnect Tailscale if manifest has tailscale config.
+    // Always attempt — setupTailscale handles all tiers (installed, not installed).
+    if (manifest.tailscale) {
+      const stateDir = manifest.tailscale.stateDir ?? CODER_TAILSCALE_STATE_DIR;
+      await setupTailscale(name, this.exec, {
+        stateDir,
+        controlServer: manifest.tailscale.controlServer,
+      });
+    }
+
+    await this.applyManifestRuntime(name, manifest);
+  }
+
+  /**
+   * Apply runtime from a workspace manifest.
+   * Simpler than Codespaces — no port forwarding, no keepalive needed.
+   * Coder handles port forwarding via its web UI and activity tracking at the template level.
+   */
+  private async applyManifestRuntime(
+    name: string,
+    manifest: WorkspaceManifest,
+  ): Promise<void> {
+    // startServices now handles both starting and port verification in a single
+    // SSH command (required for Coder — processes die between SSH sessions).
+    await startServices(name, this.exec, manifest.services);
+  }
+
+  /**
+   * Wait for a port to be accepting connections.
+   */
+  private async waitForPort(
+    name: string,
+    port: number,
+    timeoutMs = 30_000,
+  ): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const result = await this.exec(
+        name,
+        `curl -sf --max-time 2 -o /dev/null http://localhost:${port}/ || curl -sf --max-time 2 -o /dev/null http://localhost:${port}/health`,
+      );
+      if (result.exitCode === 0) return;
+      await sleep(2_000);
+    }
+    throw new WorkspaceTimeoutError('coder', 'waitForPort', timeoutMs);
   }
 
   // ===========================================================================

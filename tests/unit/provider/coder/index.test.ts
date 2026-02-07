@@ -8,6 +8,40 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Module mocks — hoisted by vitest
+vi.mock('../../../../src/provider/coder/cli.js', () => ({
+  createCoderExecFn: vi.fn().mockReturnValue(
+    vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
+  ),
+}));
+
+vi.mock('../../../../src/provider/codespaces/setup.js', () => ({
+  installSudocode: vi.fn().mockResolvedValue(undefined),
+  applySetupConfig: vi.fn().mockResolvedValue(undefined),
+  setupTailscale: vi.fn().mockResolvedValue({ tier: 'already-running', hostname: 'test' }),
+  startServices: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../../../src/services/manifest.js', () => ({
+  writeManifest: vi.fn().mockResolvedValue(undefined),
+  readManifest: vi.fn().mockResolvedValue(null),
+  DEFAULT_MANIFEST_PATH: '/workspaces/.sudopod/manifest.json',
+  MANIFEST_PATH: '/workspaces/.sudopod/manifest.json',
+}));
+
+vi.mock('../../../../src/services/registry.js', () => ({
+  resolveService: vi.fn().mockImplementation((name: string, port?: number) => ({
+    name,
+    type: 'service' as const,
+    install: '',
+    start: `nohup ${name} --port ${port ?? 3000}`,
+    port: port ?? 3000,
+  })),
+  getServiceDefinition: vi.fn(),
+  getBuiltInServiceNames: vi.fn().mockReturnValue([]),
+}));
+
 import { CoderProvider } from '../../../../src/provider/coder/index.js';
 import { CoderApiError } from '../../../../src/coder-sdk/errors.js';
 import {
@@ -19,6 +53,10 @@ import {
   ProviderError,
 } from '../../../../src/provider/errors.js';
 import type { CoderWorkspace, CoderWorkspaceBuild, CoderUser } from '../../../../src/coder-sdk/types.js';
+import { applySetupConfig, setupTailscale, startServices } from '../../../../src/provider/codespaces/setup.js';
+import { writeManifest, readManifest } from '../../../../src/services/manifest.js';
+import { resolveService } from '../../../../src/services/registry.js';
+import { createCoderExecFn } from '../../../../src/provider/coder/cli.js';
 
 // =============================================================================
 // Test Fixtures
@@ -127,6 +165,23 @@ describe('CoderProvider', () => {
   let mocks: ReturnType<typeof createMockedProvider>['mocks'];
 
   beforeEach(() => {
+    // Reset module mock implementations (vi.restoreAllMocks in afterEach clears them)
+    vi.mocked(createCoderExecFn).mockReturnValue(
+      vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
+    );
+    vi.mocked(startServices).mockResolvedValue([]);
+    vi.mocked(readManifest).mockResolvedValue(null);
+    vi.mocked(writeManifest).mockResolvedValue(undefined);
+    vi.mocked(applySetupConfig).mockResolvedValue(undefined);
+    vi.mocked(setupTailscale).mockResolvedValue({ tier: 'already-running', hostname: 'test' });
+    vi.mocked(resolveService).mockImplementation((name: string, port?: number) => ({
+      name,
+      type: 'service' as const,
+      install: '',
+      start: `nohup ${name} --port ${port ?? 3000}`,
+      port: port ?? 3000,
+    }));
+
     const setup = createMockedProvider();
     provider = setup.provider;
     mocks = setup.mocks;
@@ -573,6 +628,225 @@ describe('CoderProvider', () => {
 
       expect(p).toBeInstanceOf(CoderProvider);
       expect(p.name).toBe('Coder');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // create() with setup config
+  // ---------------------------------------------------------------------------
+
+  describe('create() with setup config', () => {
+    function setupCreateMocks() {
+      mocks.getCurrentUser.mockResolvedValue(mockUser());
+      mocks.getTemplateByName.mockResolvedValue({ id: 'tpl-1', name: 'default' });
+      mocks.createWorkspace.mockResolvedValue(mockWorkspace({ latest_build: mockBuild({ status: 'starting' }) }));
+      mocks.waitForWorkspaceStatus.mockResolvedValue(mockWorkspace());
+    }
+
+    it('calls applySetupConfig with Coder tailscale stateDir default', async () => {
+      setupCreateMocks();
+
+      await provider.create({
+        name: 'test-ws',
+        repository: { owner: 'org', repo: 'app' },
+        retentionDays: 7,
+        setup: {
+          tailscale: { authKey: 'tskey-123' },
+        },
+      });
+
+      expect(applySetupConfig).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        expect.objectContaining({
+          tailscale: expect.objectContaining({
+            authKey: 'tskey-123',
+            stateDir: '/workspaces/.tailscale',
+          }),
+        }),
+      );
+    });
+
+    it('writes manifest with CODER_MANIFEST_PATH', async () => {
+      setupCreateMocks();
+
+      await provider.create({
+        name: 'test-ws',
+        repository: { owner: 'org', repo: 'app' },
+        retentionDays: 7,
+        setup: {
+          services: [{ name: 'sudocode', port: 4000 }],
+        },
+      });
+
+      expect(writeManifest).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        expect.any(Object),
+        '/workspaces/.sudopod/manifest.json',
+      );
+    });
+
+    it('resolves services from setup config', async () => {
+      setupCreateMocks();
+
+      await provider.create({
+        name: 'test-ws',
+        repository: { owner: 'org', repo: 'app' },
+        retentionDays: 7,
+        setup: {
+          services: [{ name: 'sudocode', port: 4000 }],
+        },
+      });
+
+      expect(resolveService).toHaveBeenCalledWith('sudocode', 4000);
+    });
+
+    it('calls startServices after writing manifest', async () => {
+      setupCreateMocks();
+
+      await provider.create({
+        name: 'test-ws',
+        repository: { owner: 'org', repo: 'app' },
+        retentionDays: 7,
+        setup: {
+          services: [{ name: 'sudocode', port: 4000 }],
+        },
+      });
+
+      expect(startServices).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'sudocode', port: 4000 }),
+        ]),
+      );
+    });
+
+    it('skips applySetupConfig when no setup provided', async () => {
+      setupCreateMocks();
+
+      await provider.create({
+        name: 'test-ws',
+        repository: { owner: 'org', repo: 'app' },
+        retentionDays: 7,
+      });
+
+      expect(applySetupConfig).not.toHaveBeenCalled();
+    });
+
+    it('still writes manifest even without setup', async () => {
+      setupCreateMocks();
+
+      await provider.create({
+        name: 'test-ws',
+        repository: { owner: 'org', repo: 'app' },
+        retentionDays: 7,
+      });
+
+      expect(writeManifest).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        expect.any(Object),
+        '/workspaces/.sudopod/manifest.json',
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // resume() with manifest
+  // ---------------------------------------------------------------------------
+
+  describe('resume() with manifest', () => {
+    it('reads manifest from CODER_MANIFEST_PATH', async () => {
+      mocks.getWorkspace.mockResolvedValue(mockWorkspace());
+
+      await provider.resume('ws-1');
+
+      expect(readManifest).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        '/workspaces/.sudopod/manifest.json',
+      );
+    });
+
+    it('applies runtime when manifest exists', async () => {
+      const manifest = {
+        version: 1 as const,
+        services: [{ name: 'sudocode', type: 'service' as const, install: '', start: 'nohup sudocode --port 3000', port: 3000 }],
+        createdAt: '2026-01-01T00:00:00Z',
+      };
+      vi.mocked(readManifest).mockResolvedValue(manifest);
+      mocks.getWorkspace.mockResolvedValue(mockWorkspace());
+
+      await provider.resume('ws-1');
+
+      expect(startServices).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        manifest.services,
+      );
+    });
+
+    it('reconnects Tailscale when manifest has tailscale config', async () => {
+      const manifest = {
+        version: 1 as const,
+        services: [],
+        tailscale: { stateDir: '/workspaces/.tailscale', controlServer: 'https://headscale.test' },
+        createdAt: '2026-01-01T00:00:00Z',
+      };
+      vi.mocked(readManifest).mockResolvedValue(manifest);
+      mocks.getWorkspace.mockResolvedValue(mockWorkspace());
+
+      // Mock exec: node check passes (exit 0)
+      const execMock = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '/usr/bin/node', stderr: '' });
+      (provider as any).exec = execMock;
+
+      await provider.resume('ws-1');
+
+      expect(setupTailscale).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        expect.objectContaining({
+          stateDir: '/workspaces/.tailscale',
+          controlServer: 'https://headscale.test',
+        }),
+      );
+    });
+
+    it('calls setupTailscale even when state file does not exist (re-install)', async () => {
+      const manifest = {
+        version: 1 as const,
+        services: [],
+        tailscale: { stateDir: '/workspaces/.tailscale' },
+        createdAt: '2026-01-01T00:00:00Z',
+      };
+      vi.mocked(readManifest).mockResolvedValue(manifest);
+      mocks.getWorkspace.mockResolvedValue(mockWorkspace());
+
+      // Mock exec: node check passes (exit 0), other commands succeed
+      const execMock = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '/usr/bin/node', stderr: '' });
+      (provider as any).exec = execMock;
+
+      await provider.resume('ws-1');
+
+      // setupTailscale is always called when manifest has tailscale config
+      expect(setupTailscale).toHaveBeenCalledWith(
+        'test-workspace',
+        expect.any(Function),
+        expect.objectContaining({
+          stateDir: '/workspaces/.tailscale',
+        }),
+      );
+    });
+
+    it('skips runtime when no manifest on disk', async () => {
+      vi.mocked(readManifest).mockResolvedValue(null);
+      mocks.getWorkspace.mockResolvedValue(mockWorkspace());
+
+      await provider.resume('ws-1');
+
+      expect(startServices).not.toHaveBeenCalled();
     });
   });
 });

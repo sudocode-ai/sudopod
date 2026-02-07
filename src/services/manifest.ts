@@ -8,7 +8,7 @@
  */
 
 import type { ResolvedService } from './registry.js';
-import type { ExecFn } from '../provider/codespaces/setup.js';
+import type { ExecFn } from '../provider/types.js';
 
 // ============================================================================
 // Types
@@ -28,7 +28,10 @@ export interface WorkspaceManifest {
 // Constants
 // ============================================================================
 
-export const MANIFEST_PATH = '/workspaces/.sudopod/manifest.json';
+export const DEFAULT_MANIFEST_PATH = '/workspaces/.sudopod/manifest.json';
+
+/** @deprecated Use DEFAULT_MANIFEST_PATH */
+export const MANIFEST_PATH = DEFAULT_MANIFEST_PATH;
 
 // ============================================================================
 // Public API
@@ -43,11 +46,12 @@ export async function writeManifest(
   name: string,
   exec: ExecFn,
   manifest: WorkspaceManifest,
+  manifestPath: string = DEFAULT_MANIFEST_PATH,
 ): Promise<void> {
   const json = JSON.stringify(manifest, null, 2);
   const encoded = Buffer.from(json).toString('base64');
-  await exec(name, `mkdir -p $(dirname ${MANIFEST_PATH})`);
-  await exec(name, `echo "${encoded}" | base64 -d > ${MANIFEST_PATH}`);
+  await exec(name, `mkdir -p $(dirname ${manifestPath})`);
+  await exec(name, `echo "${encoded}" | base64 -d > ${manifestPath}`);
 }
 
 /**
@@ -58,8 +62,9 @@ export async function writeManifest(
 export async function readManifest(
   name: string,
   exec: ExecFn,
+  manifestPath: string = DEFAULT_MANIFEST_PATH,
 ): Promise<WorkspaceManifest | null> {
-  const result = await exec(name, `cat ${MANIFEST_PATH} 2>/dev/null || true`);
+  const result = await exec(name, `cat ${manifestPath} 2>/dev/null || true`);
   const raw = result.stdout.trim();
   if (!raw) return null;
 

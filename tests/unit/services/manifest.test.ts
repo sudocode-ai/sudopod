@@ -9,7 +9,7 @@ import {
   MANIFEST_PATH,
 } from '../../../src/services/manifest.js';
 import type { WorkspaceManifest } from '../../../src/services/manifest.js';
-import type { ExecFn } from '../../../src/provider/codespaces/setup.js';
+import type { ExecFn } from '../../../src/provider/types.js';
 
 describe('MANIFEST_PATH', () => {
   it('should point to /workspaces/.sudopod/manifest.json', () => {

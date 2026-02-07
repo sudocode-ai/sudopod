@@ -9,21 +9,12 @@
  * @see s-84xz - Codespaces Provider Implementation specification
  */
 
-import type { SetupConfig } from '../types.js';
-import type { ExecResult } from './cli.js';
+import type { SetupConfig, ExecFn, ExecResult } from '../types.js';
 import type { ResolvedService } from '../../services/registry.js';
 import { getServiceDefinition, resolveService } from '../../services/registry.js';
 import { ExecutionError } from '../errors.js';
 
-/**
- * Function signature for executing commands in a codespace.
- * Decoupled from the CLI module for testability.
- */
-export type ExecFn = (
-  name: string,
-  command: string,
-  options?: { background?: boolean; timeout?: number }
-) => Promise<ExecResult>;
+export type { ExecFn };
 
 /**
  * Which setup path was taken by setupTailscale.
@@ -80,16 +71,26 @@ export async function installSudocode(
   codespaceName: string,
   exec: ExecFn
 ): Promise<void> {
-  // Default codespace images ship Node 16 via nvm. Sudocode requires >=18.
-  // nvm state doesn't reliably persist across separate SSH sessions
-  // (bash -l -c invocations), so we chain everything in a single command.
+  // Ensure Node.js >= 18 is available, then install sudocode.
   //
-  // The nvm source step uses semicolons (not &&) so failure to find nvm
-  // doesn't abort the chain — some images may have Node 20+ without nvm.
+  // Strategy (tried in order):
+  //   1. Load nvm and use/install Node 20 (common in Codespaces images)
+  //   2. If node is already in PATH and >= 18, use it directly
+  //   3. Otherwise, install Node 20 via nodesource (works on Debian/Ubuntu)
+  //
+  // All steps are chained in a single command because nvm state doesn't
+  // reliably persist across separate SSH sessions (bash -l -c invocations).
   const cmd =
+    // Try nvm first (Codespaces images)
     'export NVM_DIR="$HOME/.nvm"; ' +
     '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; ' +
     'nvm install 20 2>/dev/null; nvm use 20 2>/dev/null; ' +
+    // Check if node is available after nvm attempt
+    'if ! command -v node >/dev/null 2>&1; then ' +
+    '  echo "Node.js not found, installing via nodesource..."; ' +
+    '  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && ' +
+    '  sudo apt-get install -y nodejs; ' +
+    'fi; ' +
     'node --version && npm install -g sudocode && sudocode init';
 
   await execOrThrow(exec, codespaceName, cmd, {
@@ -241,20 +242,19 @@ async function startTailscaleDaemon(
     `sudo mkdir -p ${stateDir} /var/run/tailscale`,
   );
 
-  // Start daemon in background with output redirected to a log file.
-  // Without redirection, tailscaled's stderr keeps the SSH pipe open and
-  // prevents the session from returning.
-  await exec(
-    codespaceName,
-    `sudo tailscaled --state=${stateDir}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &`,
-  );
-
-  // Wait for the socket to appear — confirms the daemon is ready for commands.
-  const waitCmd =
+  // Start daemon in background AND wait for socket in a SINGLE command.
+  // This is critical for Coder workspaces: coder ssh kills the entire process
+  // tree when the session closes, so if we start the daemon in one session and
+  // check the socket in another, the daemon dies between sessions.
+  //
+  // setsid creates a new session so the daemon is fully detached from the SSH
+  // process group — it won't receive SIGHUP when the SSH session closes.
+  const startAndWaitCmd =
+    `setsid sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --state=${stateDir}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 & ` +
     'for i in $(seq 1 20); do [ -S /var/run/tailscale/tailscaled.sock ] && break; sleep 0.5; done; ' +
     '[ -S /var/run/tailscale/tailscaled.sock ] || { echo "tailscaled socket did not appear after 10s" >&2; cat /tmp/tailscaled.log >&2; exit 1; }';
 
-  await execOrThrow(exec, codespaceName, waitCmd, { timeout: 30_000 });
+  await execOrThrow(exec, codespaceName, startAndWaitCmd, { timeout: 30_000 });
 }
 
 /**
@@ -287,12 +287,23 @@ export async function setupTailscale(
     // Remove broken apt repos that block apt-get update (idempotent)
     await exec(codespaceName, 'sudo rm -f /etc/apt/sources.list.d/yarn.list');
 
+    // Prevent tailscaled from auto-starting during package install.
+    // The post-install hook starts tailscaled with kernel networking, which
+    // modifies routing tables and disconnects the Coder agent's SSH tunnel.
+    await exec(
+      codespaceName,
+      'printf \'#!/bin/sh\\nexit 101\\n\' | sudo tee /usr/sbin/policy-rc.d > /dev/null && sudo chmod +x /usr/sbin/policy-rc.d',
+    );
+
     await execOrThrow(
       exec,
       codespaceName,
       'curl -fsSL https://tailscale.com/install.sh | sh',
       { timeout: 120_000 },
     );
+
+    // Remove the policy so normal service management works
+    await exec(codespaceName, 'sudo rm -f /usr/sbin/policy-rc.d');
 
     await startTailscaleDaemon(codespaceName, exec, stateDir);
     await joinTailnet(exec, codespaceName, upCmd);
@@ -354,8 +365,20 @@ export async function startServices(
       }
     }
 
-    // Start the service
-    await exec(name, svc.start, { background: true });
+    // Start the service AND wait for the port in a SINGLE SSH command.
+    // This is critical for Coder workspaces: coder ssh kills the entire PTY
+    // session when it closes, so a service started in one session dies before
+    // the next session can check the port.
+    //
+    // setsid creates a new session so the service survives SSH disconnection.
+    // The port poll keeps the SSH session alive until the service is ready.
+    const startAndWaitCmd =
+      `setsid ${svc.start} & ` +
+      `for i in $(seq 1 30); do ` +
+      `curl -sf --max-time 2 -o /dev/null http://localhost:${svc.port}/ 2>/dev/null && break || ` +
+      `curl -sf --max-time 2 -o /dev/null http://localhost:${svc.port}/health 2>/dev/null && break; ` +
+      `sleep 1; done`;
+    await exec(name, startAndWaitCmd, { timeout: 60_000 });
     startedPorts.push(svc.port);
   }
 

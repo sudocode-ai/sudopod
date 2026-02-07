@@ -27,6 +27,9 @@ export type {
   ListWorkspacesOptions,
 } from './types.js';
 
+// Exec types
+export type { ExecResult, ExecFn } from './types.js';
+
 // Error classes
 export {
   ProviderError,
