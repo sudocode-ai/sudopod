@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   HeadscaleClient,
   HeadscaleApiError,
-} from '../../../tests/integration/tailscale/headscale-client.js';
+} from '../../../src/headscale/client.js';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return {

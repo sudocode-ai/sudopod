@@ -2,6 +2,8 @@ import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import type { CreateOptions, ServiceConfig } from '../../provider/types.js';
 import type { CommandContext } from '../types.js';
+import { loadConfig } from '../config.js';
+import { HeadscaleClient } from '../../headscale/client.js';
 import { printWorkspace, printJson, serializeWorkspace, printError } from '../output.js';
 
 export interface CreateCommandOptions {
@@ -13,6 +15,7 @@ export interface CreateCommandOptions {
   setupScript?: string;
   port: string;
   idleTimeout?: string;
+  tailscale?: boolean;
   tailscaleAuthKey?: string;
   tailscaleServer?: string;
 }
@@ -25,6 +28,13 @@ export async function handleCreate(
     const [owner, repo] = opts.repo ? parseRepo(opts.repo) : detectRepo();
     const branch = opts.branch ?? detectBranch();
     const name = generateName(repo, branch);
+
+    // Auto-generate tailscale preauthkey if --tailscale flag is set
+    if (opts.tailscale && !opts.tailscaleAuthKey) {
+      const { authKey, controlServer } = await autoGeneratePreauthKey();
+      opts.tailscaleAuthKey = authKey;
+      opts.tailscaleServer = opts.tailscaleServer ?? controlServer;
+    }
 
     const createOpts: CreateOptions = {
       name,
@@ -100,6 +110,39 @@ function parseService(value: string): ServiceConfig {
     }
   }
   return { name: value };
+}
+
+/**
+ * Auto-generate an ephemeral preauthkey using stored Headscale admin credentials.
+ */
+async function autoGeneratePreauthKey(): Promise<{ authKey: string; controlServer: string }> {
+  const config = loadConfig();
+  if (!config.tailscale?.apiKey || !config.tailscale?.controlServer) {
+    throw new Error(
+      'Not connected to a tailnet. Run: sudopod tailscale connect'
+    );
+  }
+
+  const client = new HeadscaleClient({
+    baseUrl: config.tailscale.controlServer,
+    apiKey: config.tailscale.apiKey,
+  });
+
+  // Use first available user
+  const users = await client.listUsers();
+  if (users.length === 0) {
+    throw new Error(
+      'No users found on Headscale. Create one first: headscale users create <name>'
+    );
+  }
+
+  const authKey = await client.createPreauthKey(users[0].name, {
+    ephemeral: true,
+    reusable: false,
+    expiry: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+
+  return { authKey, controlServer: config.tailscale.controlServer };
 }
 
 function buildSetupConfig(opts: CreateCommandOptions) {

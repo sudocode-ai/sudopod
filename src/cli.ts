@@ -12,6 +12,8 @@ import { handleDelete } from './cli/commands/delete.js';
 import { handleGet } from './cli/commands/get.js';
 import { handleList } from './cli/commands/list.js';
 import { handleConfig, handleProviderConfig } from './cli/commands/config.js';
+import { handleTailscaleConnect, handleTailscaleCreateKey } from './cli/commands/tailscale.js';
+import { handleHeadscaleStart, handleHeadscaleStop } from './cli/commands/headscale.js';
 import type { CommandContext } from './cli/types.js';
 import type { Provider } from './provider/types.js';
 
@@ -43,7 +45,8 @@ function registerWorkspaceCommands(parent: Command, resolveProvider: () => Provi
     .option('--setup-script <script>', 'one-time setup script')
     .option('--port <port>', 'primary service port', '3000')
     .option('--idle-timeout <minutes>', 'idle timeout in minutes')
-    .option('--tailscale-auth-key <key>', 'tailscale auth key')
+    .option('--tailscale', 'auto-generate preauthkey from stored config')
+    .option('--tailscale-auth-key <key>', 'tailscale auth key (manual)')
     .option('--tailscale-server <url>', 'tailscale control server URL')
     .action(async (opts) => { await handleCreate(getCtx(), opts); });
 
@@ -130,6 +133,52 @@ hub
 registerWorkspaceCommands(hub, () => {
   return createProvider('hub', resolveHubConfig());
 });
+
+// ── sudopod tailscale <command> ────────────────────────────────────────
+const tailscale = program
+  .command('tailscale')
+  .description('Tailscale networking commands');
+
+tailscale
+  .command('connect')
+  .description('Join a tailnet and store admin credentials')
+  .requiredOption('--control-server <url>', 'Headscale control server URL')
+  .requiredOption('--auth-key <key>', 'Preauthkey for joining the tailnet')
+  .requiredOption('--api-key <key>', 'Headscale admin API key')
+  .action(async (opts) => {
+    await handleTailscaleConnect(opts, !!program.opts().json);
+  });
+
+tailscale
+  .command('create-key')
+  .description('Generate a preauthkey for a workspace')
+  .option('--no-ephemeral', 'create non-ephemeral key')
+  .option('--reusable', 'create reusable key')
+  .option('--expiration <duration>', 'key expiration (e.g. 1h, 30m, 2d)', '1h')
+  .option('--user <name>', 'Headscale user (default: first user)')
+  .action(async (opts) => {
+    await handleTailscaleCreateKey(opts, !!program.opts().json);
+  });
+
+// ── sudopod headscale <command> ───────────────────────────────────────
+const headscaleCmd = program
+  .command('headscale')
+  .description('Local Headscale instance management');
+
+headscaleCmd
+  .command('start')
+  .description('Start a local Headscale instance via Docker')
+  .option('--port <port>', 'Headscale port', '8080')
+  .action(async (opts) => {
+    await handleHeadscaleStart(opts, !!program.opts().json);
+  });
+
+headscaleCmd
+  .command('stop')
+  .description('Stop the local Headscale instance')
+  .action(async () => {
+    await handleHeadscaleStop(!!program.opts().json);
+  });
 
 // ── sudopod <command> (default provider) ────────────────────────────────
 registerWorkspaceCommands(program, () => {

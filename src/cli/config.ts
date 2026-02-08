@@ -7,10 +7,20 @@ export interface ProviderAuthConfig {
   token: string;
 }
 
+export interface TailscaleConfig {
+  /** Headscale control server URL */
+  controlServer: string;
+  /** Headscale admin API key for generating preauthkeys */
+  apiKey: string;
+  /** Directory for persisting local Tailscale daemon state */
+  stateDir?: string;
+}
+
 export interface SudopodConfig {
   defaultProvider?: string;
   coder?: ProviderAuthConfig;
   hub?: ProviderAuthConfig;
+  tailscale?: TailscaleConfig;
 }
 
 export function getConfigPath(): string {

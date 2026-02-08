@@ -36,6 +36,9 @@ export async function handleConfig(opts: ConfigCommandOptions, jsonOutput: boole
       if (config.hub) {
         console.log(`Hub: ${config.hub.url}`);
       }
+      if (config.tailscale) {
+        console.log(`Tailscale: ${config.tailscale.controlServer}`);
+      }
     }
   } catch (err) {
     printError(err instanceof Error ? err.message : String(err));
