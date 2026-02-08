@@ -136,7 +136,7 @@ async function autoGeneratePreauthKey(): Promise<{ authKey: string; controlServe
     );
   }
 
-  const authKey = await client.createPreauthKey(users[0].name, {
+  const authKey = await client.createPreauthKey(users[0].id, {
     ephemeral: true,
     reusable: false,
     expiry: new Date(Date.now() + 60 * 60 * 1000).toISOString(),

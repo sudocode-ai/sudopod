@@ -99,7 +99,7 @@ describe('Tailscale CLI E2E', () => {
     // Disconnect local Tailscale from the test tailnet
     console.log('Tearing down...');
     try {
-      shell('sudo tailscale logout', 15_000);
+      shell('tailscale logout', 15_000);
       console.log('  Tailscale logged out');
     } catch {
       console.log('  Tailscale logout skipped (not connected)');
@@ -193,9 +193,9 @@ describe('Tailscale CLI E2E', () => {
 
     const users = await headscaleClient.listUsers();
     expect(users.length).toBeGreaterThan(0);
-    console.log(`  Using user: ${users[0].name}`);
+    console.log(`  Using user: ${users[0].name} (id=${users[0].id})`);
 
-    const key = await headscaleClient.createPreauthKey(users[0].name, {
+    const key = await headscaleClient.createPreauthKey(users[0].id, {
       ephemeral: true,
       reusable: false,
     });
@@ -213,9 +213,11 @@ describe('Tailscale CLI E2E', () => {
 
     console.log('Connecting local Tailscale to tailnet...');
 
-    // Join the tailnet directly (same as `sudopod tailscale connect` does internally)
+    // Join the tailnet — use --force-reauth in case already connected to a different server.
+    // No sudo needed on macOS (Tailscale app daemon handles it).
+    // On Linux, the caller may need to run with sudo or have appropriate permissions.
     shell(
-      `sudo tailscale up --login-server=${HEADSCALE_URL} --authkey=${preauthKey} --hostname=${TEST_HOSTNAME} --accept-dns=false`,
+      `tailscale up --login-server=${HEADSCALE_URL} --authkey=${preauthKey} --hostname=${TEST_HOSTNAME} --accept-dns=false --force-reauth`,
       30_000,
     );
     console.log('  tailscale up succeeded');
@@ -259,7 +261,7 @@ describe('Tailscale CLI E2E', () => {
     console.log('Creating additional preauthkey (simulating workspace deploy)...');
 
     const users = await headscaleClient.listUsers();
-    const key = await headscaleClient.createPreauthKey(users[0].name, {
+    const key = await headscaleClient.createPreauthKey(users[0].id, {
       ephemeral: true,
       reusable: false,
     });

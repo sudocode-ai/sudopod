@@ -138,7 +138,7 @@ export async function handleTailscaleCreateKey(
           'No users found on Headscale. Create one first: headscale users create <name>'
         );
       }
-      userId = users[0].name;
+      userId = users[0].id;
     }
 
     // Parse expiration — default 1h
