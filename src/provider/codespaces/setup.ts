@@ -33,6 +33,7 @@ interface TailscaleConfig {
   authKey?: string;
   controlServer?: string;
   stateDir?: string;
+  mode?: 'userspace' | 'kernel';
 }
 
 /**
@@ -153,6 +154,7 @@ export async function applySetupConfig(
       authKey: setup.tailscale.authKey,
       controlServer: setup.tailscale.controlServer,
       stateDir: setup.tailscale.stateDir,
+      mode: setup.tailscale.mode,
     });
   }
 
@@ -188,6 +190,11 @@ function buildTailscaleUpArgs(
   }
   if (config.controlServer) {
     args.push(`--login-server=${config.controlServer}`);
+  }
+  // Kernel mode enables Tailscale SSH — lets VS Code Remote-SSH connect
+  // directly via tailnet identity, no SSH keys needed.
+  if (config.mode === 'kernel') {
+    args.push('--ssh');
   }
   return args.join(' ');
 }
@@ -229,12 +236,20 @@ export const DEFAULT_STATE_DIR = '/workspaces/.tailscale';
  * Creates state/socket directories, starts the daemon in background,
  * and waits for the socket to appear (confirming the daemon is ready).
  *
+ * Two networking modes:
+ * - `userspace` (default): Uses --tun=userspace-networking + SOCKS5 proxy.
+ *   Safe for Codespaces where kernel networking modifications break SSH tunnels.
+ * - `kernel`: Uses --statedir for full kernel networking + SSH host keys.
+ *   Required for Tailscale SSH (VS Code Remote-SSH). Used for Coder workspaces.
+ *
  * @param stateDir - Directory for persisting daemon state. Defaults to /workspaces/.tailscale.
+ * @param mode - Networking mode. Defaults to 'userspace'.
  */
 async function startTailscaleDaemon(
   codespaceName: string,
   exec: ExecFn,
   stateDir: string = DEFAULT_STATE_DIR,
+  mode: 'userspace' | 'kernel' = 'userspace',
 ): Promise<void> {
   await execOrThrow(
     exec,
@@ -249,8 +264,19 @@ async function startTailscaleDaemon(
   //
   // setsid creates a new session so the daemon is fully detached from the SSH
   // process group — it won't receive SIGHUP when the SSH session closes.
+
+  // Build daemon flags based on networking mode.
+  // Kernel mode: --statedir creates a directory with ssh/ subdir for host keys.
+  //   Critical: --statedir (NOT --state) is required for SSH support.
+  //   --state=/path/file only stores state, no SSH host key directory.
+  // Userspace mode: --tun=userspace-networking avoids kernel routing table changes,
+  //   --socks5-server enables proxy access to tailnet IPs, --state is file-based.
+  const daemonFlags = mode === 'kernel'
+    ? `--statedir=${stateDir} --socket=/var/run/tailscale/tailscaled.sock`
+    : `--tun=userspace-networking --socks5-server=localhost:1055 --state=${stateDir}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock`;
+
   const startAndWaitCmd =
-    `setsid sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --state=${stateDir}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 & ` +
+    `setsid sudo tailscaled ${daemonFlags} > /tmp/tailscaled.log 2>&1 & ` +
     'for i in $(seq 1 20); do [ -S /var/run/tailscale/tailscaled.sock ] && break; sleep 0.5; done; ' +
     '[ -S /var/run/tailscale/tailscaled.sock ] || { echo "tailscaled socket did not appear after 10s" >&2; cat /tmp/tailscaled.log >&2; exit 1; }';
 
@@ -277,6 +303,7 @@ export async function setupTailscale(
   config: TailscaleConfig,
 ): Promise<TailscaleSetupResult> {
   const stateDir = config.stateDir ?? DEFAULT_STATE_DIR;
+  const mode = config.mode ?? 'userspace';
   const upCmd = buildTailscaleUpArgs(codespaceName, config);
 
   // Probe 1: Is tailscale installed?
@@ -305,7 +332,7 @@ export async function setupTailscale(
     // Remove the policy so normal service management works
     await exec(codespaceName, 'sudo rm -f /usr/sbin/policy-rc.d');
 
-    await startTailscaleDaemon(codespaceName, exec, stateDir);
+    await startTailscaleDaemon(codespaceName, exec, stateDir, mode);
     await joinTailnet(exec, codespaceName, upCmd);
 
     return { tier: 'installed', hostname: codespaceName };
@@ -323,7 +350,7 @@ export async function setupTailscale(
 
   if (!daemonIsRunning) {
     // === TIER 2: Installed but daemon not running ===
-    await startTailscaleDaemon(codespaceName, exec, stateDir);
+    await startTailscaleDaemon(codespaceName, exec, stateDir, mode);
     await joinTailnet(exec, codespaceName, upCmd);
 
     return { tier: 'started-daemon', hostname: codespaceName };

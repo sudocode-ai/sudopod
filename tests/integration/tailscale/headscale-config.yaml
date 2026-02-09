@@ -34,6 +34,10 @@ derp:
   auto_update_enabled: true
   update_frequency: 1h
 
+policy:
+  mode: file
+  path: /etc/headscale/acl-policy.json
+
 unix_socket: /var/run/headscale/headscale.sock
 
 log:

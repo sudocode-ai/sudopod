@@ -18,7 +18,17 @@ export interface WorkspaceManifest {
   version: 1;
   services: ResolvedService[];
   credentials?: { claudeLtt?: string };
-  tailscale?: { stateDir: string; controlServer?: string };
+  tailscale?: {
+    stateDir: string;
+    controlServer?: string;
+    mode?: 'userspace' | 'kernel';
+    /** Resolved Tailscale IP from Headscale (e.g., "100.64.0.2") */
+    ip?: string;
+    /** Headscale node ID (numeric string) */
+    nodeId?: string;
+    /** Node name on the tailnet */
+    nodeName?: string;
+  };
   lifecycle?: { idleTimeoutMinutes?: number };
   setupScript?: string;
   createdAt: string;

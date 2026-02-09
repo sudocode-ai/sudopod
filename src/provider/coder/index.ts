@@ -40,6 +40,8 @@ import { installSudocode, applySetupConfig, setupTailscale, startServices } from
 import { resolveService } from '../../services/registry.js';
 import { writeManifest, readManifest } from '../../services/manifest.js';
 import type { WorkspaceManifest } from '../../services/manifest.js';
+import { HeadscaleClient } from '../../headscale/client.js';
+import type { HeadscaleNode } from '../../headscale/client.js';
 
 // =============================================================================
 // Constants
@@ -148,17 +150,37 @@ export class CoderProvider implements Provider {
 
       // Apply optional one-time setup config (credentials, services, tailscale, scripts)
       if (options.setup) {
-        // Override tailscale stateDir default to Coder path
+        // Override tailscale defaults for Coder: kernel networking + Coder state path
         const setupWithCoderDefaults = {
           ...options.setup,
           tailscale: options.setup.tailscale
             ? {
                 ...options.setup.tailscale,
                 stateDir: options.setup.tailscale.stateDir ?? CODER_TAILSCALE_STATE_DIR,
+                mode: options.setup.tailscale.mode ?? 'kernel' as const,
               }
             : undefined,
         };
         await applySetupConfig(workspaceName, this.exec, setupWithCoderDefaults);
+
+        // Set up .vscode-server symlink so VS Code Remote-SSH persists on EBS.
+        // /root/.vscode-server is on ephemeral overlay; symlink to /workspaces/ (EBS).
+        if (options.setup.tailscale) {
+          await this.exec(
+            workspaceName,
+            'mkdir -p /workspaces/.vscode-server && rm -rf /root/.vscode-server && ln -s /workspaces/.vscode-server /root/.vscode-server',
+          );
+        }
+      }
+
+      // Discover Tailscale IP via Headscale API if configured
+      let tailscaleNode: HeadscaleNode | undefined;
+      if (options.setup?.tailscale?.headscaleApiKey && options.setup.tailscale.controlServer) {
+        tailscaleNode = await this.discoverTailscaleNode(
+          options.setup.tailscale.controlServer,
+          options.setup.tailscale.headscaleApiKey,
+          workspaceName,
+        );
       }
 
       // Resolve services from setup config
@@ -175,6 +197,10 @@ export class CoderProvider implements Provider {
           ? {
               stateDir: options.setup.tailscale.stateDir ?? CODER_TAILSCALE_STATE_DIR,
               controlServer: options.setup.tailscale.controlServer,
+              mode: options.setup.tailscale.mode ?? 'kernel',
+              ip: tailscaleNode?.ipAddresses[0],
+              nodeId: tailscaleNode?.id,
+              nodeName: tailscaleNode?.givenName,
             }
           : undefined,
         lifecycle: options.setup?.lifecycle,
@@ -187,7 +213,8 @@ export class CoderProvider implements Provider {
       // Apply runtime — start services, wait for ports
       await this.applyManifestRuntime(workspaceName, manifest);
 
-      return mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.config.url });
+      const workspace = mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.config.url });
+      return this.enrichWithTailscale(workspace, manifest);
     } catch (err) {
       throw this.mapError(err, 'create');
     }
@@ -218,14 +245,16 @@ export class CoderProvider implements Provider {
           workspaceId,
           targetStatus: 'running',
         });
-        await this.applyManifestOnResume(ready.name);
-        return mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.config.url });
+        const manifest = await this.applyManifestOnResume(ready.name);
+        const ws = mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.config.url });
+        return manifest ? this.enrichWithTailscale(ws, manifest) : ws;
       }
 
       // If already running, read manifest and apply runtime
       if (status === 'running') {
-        await this.applyManifestOnResume(workspace.name);
-        return mapCoderWorkspaceToWorkspace(workspace, { baseUrl: this.config.url });
+        const manifest = await this.applyManifestOnResume(workspace.name);
+        const ws = mapCoderWorkspaceToWorkspace(workspace, { baseUrl: this.config.url });
+        return manifest ? this.enrichWithTailscale(ws, manifest) : ws;
       }
 
       // If in a transitional state, wait for it to settle
@@ -239,8 +268,9 @@ export class CoderProvider implements Provider {
         if (settled.latest_build.status === 'stopped') {
           return this.resume(workspaceId);
         }
-        await this.applyManifestOnResume(settled.name);
-        return mapCoderWorkspaceToWorkspace(settled, { baseUrl: this.config.url });
+        const manifest = await this.applyManifestOnResume(settled.name);
+        const ws = mapCoderWorkspaceToWorkspace(settled, { baseUrl: this.config.url });
+        return manifest ? this.enrichWithTailscale(ws, manifest) : ws;
       }
 
       // Failed or deleted — cannot resume
@@ -336,9 +366,9 @@ export class CoderProvider implements Provider {
    *   2. Reconnects Tailscale (re-installing the binary if needed)
    *   3. Restarts services
    */
-  private async applyManifestOnResume(name: string): Promise<void> {
+  private async applyManifestOnResume(name: string): Promise<WorkspaceManifest | null> {
     const manifest = await readManifest(name, this.exec, CODER_MANIFEST_PATH);
-    if (!manifest) return;
+    if (!manifest) return null;
 
     // Reinstall Node.js + sudocode if the binary is missing (envbuilder rebuild)
     const nodeCheck = await this.exec(name, 'command -v node');
@@ -353,10 +383,20 @@ export class CoderProvider implements Provider {
       await setupTailscale(name, this.exec, {
         stateDir,
         controlServer: manifest.tailscale.controlServer,
+        mode: manifest.tailscale.mode,
       });
+
+      // Re-create .vscode-server symlink — envbuilder rebuilds the container overlay
+      // on stop/start, so the symlink at /root/.vscode-server is lost.
+      // The actual data persists on EBS at /workspaces/.vscode-server.
+      await this.exec(
+        name,
+        'mkdir -p /workspaces/.vscode-server && rm -rf /root/.vscode-server && ln -s /workspaces/.vscode-server /root/.vscode-server',
+      );
     }
 
     await this.applyManifestRuntime(name, manifest);
+    return manifest;
   }
 
   /**
@@ -391,6 +431,70 @@ export class CoderProvider implements Provider {
       await sleep(2_000);
     }
     throw new WorkspaceTimeoutError('coder', 'waitForPort', timeoutMs);
+  }
+
+  // ===========================================================================
+  // Tailscale Helpers
+  // ===========================================================================
+
+  /**
+   * Discover a workspace's Tailscale node in Headscale by hostname.
+   * Polls with retry because the node may take a few seconds to appear
+   * after `tailscale up` completes.
+   */
+  private async discoverTailscaleNode(
+    controlServer: string,
+    apiKey: string,
+    hostname: string,
+    timeoutMs = 30_000,
+  ): Promise<HeadscaleNode> {
+    const headscale = new HeadscaleClient({ baseUrl: controlServer, apiKey });
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      const nodes = await headscale.listNodes();
+      const node = nodes.find(n => n.givenName === hostname);
+      if (node && node.ipAddresses.length > 0) {
+        return node;
+      }
+      await sleep(2_000);
+    }
+
+    throw new WorkspaceTimeoutError('coder', 'discoverTailscaleNode', timeoutMs);
+  }
+
+  /**
+   * Enrich a Workspace with Tailscale connection info from the manifest.
+   */
+  private enrichWithTailscale(workspace: Workspace, manifest: WorkspaceManifest): Workspace {
+    if (!manifest.tailscale?.ip || !manifest.tailscale?.nodeId) {
+      return workspace;
+    }
+
+    const ip = manifest.tailscale.ip;
+    const repo = workspace.repository.repo || 'workspace';
+    const nodeName = manifest.tailscale.nodeName ?? workspace.name;
+
+    return {
+      ...workspace,
+      connection: {
+        ...workspace.connection,
+        tailscale: {
+          nodeName,
+          nodeId: manifest.tailscale.nodeId,
+          ip,
+          sshCommand: `ssh root@${ip}`,
+          vscodeCommand: `code --remote ssh-remote+root@${ip} /workspaces/${repo}`,
+        },
+        ssh: {
+          command: `ssh root@${ip}`,
+        },
+        urls: {
+          ...workspace.connection.urls,
+          vscode: `code --remote ssh-remote+root@${ip} /workspaces/${repo}`,
+        },
+      },
+    };
   }
 
   // ===========================================================================

@@ -1,12 +1,13 @@
 services:
   headscale:
-    image: headscale/headscale:0.27.1
+    image: headscale/headscale:0.28.0
     container_name: headscale
     ports:
       - "8080:8080"
       - "9090:9090"
     volumes:
       - ./headscale-config.yaml:/etc/headscale/config.yaml
+      - ./acl-policy.json:/etc/headscale/acl-policy.json:ro
       - headscale-data:/var/lib/headscale
       - headscale-run:/var/run/headscale
     command: serve

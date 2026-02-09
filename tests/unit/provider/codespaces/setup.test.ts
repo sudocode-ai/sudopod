@@ -615,4 +615,85 @@ describe('setupTailscale', () => {
       expect(call.name).toBe('specific-cs');
     }
   });
+
+  // ── Kernel mode ──
+
+  it('kernel mode: should use --statedir instead of --tun=userspace-networking', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1 },
+    });
+
+    await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+      mode: 'kernel',
+    });
+
+    const commands = execCalls.map((c) => c.command);
+    const daemonCmd = commands.find((c) => c.includes('sudo tailscaled'));
+    expect(daemonCmd).toBeDefined();
+    expect(daemonCmd).toContain('--statedir=/workspaces/.tailscale');
+    expect(daemonCmd).not.toContain('--tun=userspace-networking');
+    expect(daemonCmd).not.toContain('--socks5-server');
+    expect(daemonCmd).not.toContain('tailscaled.state');
+  });
+
+  it('kernel mode: should add --ssh to tailscale up', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 0 },
+    });
+
+    await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+      mode: 'kernel',
+    });
+
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).toContain('--ssh');
+  });
+
+  it('userspace mode: should NOT add --ssh to tailscale up', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 0 },
+      'tailscale status': { exitCode: 0 },
+    });
+
+    await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+      mode: 'userspace',
+    });
+
+    const upCmd = execCalls.map((c) => c.command).find((c) => c.includes('tailscale up'));
+    expect(upCmd).not.toContain('--ssh');
+  });
+
+  it('default mode: should use userspace networking', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1 },
+    });
+
+    await setupTailscale('my-cs', mockExec, { authKey: 'tskey-abc' });
+
+    const commands = execCalls.map((c) => c.command);
+    const daemonCmd = commands.find((c) => c.includes('sudo tailscaled'));
+    expect(daemonCmd).toContain('--tun=userspace-networking');
+    expect(daemonCmd).toContain('--socks5-server=localhost:1055');
+    expect(daemonCmd).not.toContain('--statedir');
+  });
+
+  it('kernel mode: should use custom stateDir with --statedir', async () => {
+    const mockExec = createMockExec({
+      'which tailscale': { exitCode: 1 },
+    });
+
+    await setupTailscale('my-cs', mockExec, {
+      authKey: 'tskey-abc',
+      mode: 'kernel',
+      stateDir: '/custom/ts-state',
+    });
+
+    const commands = execCalls.map((c) => c.command);
+    const daemonCmd = commands.find((c) => c.includes('sudo tailscaled'));
+    expect(daemonCmd).toContain('--statedir=/custom/ts-state');
+  });
 });

@@ -13,3 +13,4 @@ tests/.env.secrets
 .env.test
 .env.tailscale-test
 .env.coder-staging
+.env.coder-self-hosted

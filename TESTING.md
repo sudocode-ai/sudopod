@@ -96,6 +96,38 @@ For faster iteration, use the setup script to bring up the infrastructure once a
 
 After `up`, the script writes `.env.tailscale-test` with the generated env vars (API keys, ngrok URL, preauthkeys). Note that the E2E test currently provisions its own infra in `beforeAll()` — the script is for manual convenience when iterating.
 
+## AWS Deployments (Live Infrastructure)
+
+In addition to the local Docker stacks, there are two live Coder deployments on AWS for E2E testing against real EC2 workspaces:
+
+| Deployment | URL | Terraform | Env File | Example |
+|------------|-----|-----------|----------|---------|
+| **Self-hosted** | `http://35.163.2.204` | `refs/coder-infra/terraform/self-hosted/` | `.env.coder-self-hosted` | `.env.coder-self-hosted.example` |
+| **Staging hub** | `https://staging.sudocode.ai` | `refs/coder-infra/terraform/staging-hub/` | `.env.coder-staging` | `.env.coder-staging.example` |
+
+**Self-hosted** is a plain EC2 instance running Coder directly (no domain, no TLS). **Staging hub** is a full deployment behind a domain with TLS.
+
+### Setup
+
+1. Copy the example env file and fill in credentials:
+   ```bash
+   cp .env.coder-self-hosted.example .env.coder-self-hosted
+   cp .env.coder-staging.example .env.coder-staging
+   ```
+
+2. Get credentials from the Terraform state or Coder admin UI.
+
+3. Run E2E tests:
+   ```bash
+   # Coder E2E tests (workspace lifecycle + Tailscale + connectivity)
+   npm run test:e2e:coder
+
+   # VS Code Remote-SSH E2E test (Tailscale SSH + VS Code connection)
+   RUN_INTEGRATION_TESTS=1 npx vitest run tests/integration/provider/coder/vscode-e2e.test.ts --config vitest.integration.coder.config.ts
+   ```
+
+The test setup files (`tests/integration/coder-sdk/setup-self-hosted.ts`) load `.env.coder-self-hosted` first, falling back to `.env.coder-staging` if not found.
+
 ## Troubleshooting
 
 - **Tests skip with "CODER_URL not set"**: Docker isn't running or `refs/coder-infra` submodule is missing. Run `git submodule update --init refs/coder-infra`.

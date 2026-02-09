@@ -251,8 +251,8 @@ export interface SetupConfig {
     controlServer?: string;
 
     /**
-     * Directory for persisting Tailscale daemon state (tailscaled.state).
-     * Must be on a volume that survives codespace stop/start so that
+     * Directory for persisting Tailscale daemon state.
+     * Must be on a volume that survives workspace stop/start so that
      * Tailscale can reconnect automatically without a fresh auth key.
      *
      * Default: /workspaces/.tailscale
@@ -260,6 +260,26 @@ export interface SetupConfig {
      * @see s-9cl3 design decision #16
      */
     stateDir?: string;
+
+    /**
+     * Networking mode for Tailscale.
+     *
+     * - `userspace` (default): Tailscale IPs not kernel-routable, requires SOCKS5 proxy.
+     *   Used for Codespaces where kernel networking modifications aren't allowed.
+     * - `kernel`: Full kernel networking with SSH support. Enables `tailscale up --ssh`
+     *   for VS Code Remote-SSH and direct IP connectivity. Used for Coder workspaces.
+     *
+     * @see s-8gxf - Tailscale Integration spec (Provider-Specific Networking Modes)
+     */
+    mode?: 'userspace' | 'kernel';
+
+    /**
+     * Headscale API key for IP discovery.
+     * When provided, the provider queries Headscale after joining the tailnet
+     * to resolve the workspace's Tailscale IP address and node ID.
+     * Required for self-hosted Headscale; not needed for Tailscale SaaS.
+     */
+    headscaleApiKey?: string;
   };
 }
 
@@ -311,16 +331,19 @@ export interface Workspace {
    */
   connection: {
     /**
-     * Tailscale identity — present when workspace was provisioned with tailscale.
-     *
-     * This is identity (which node on the tailnet is this workspace), not
-     * connection details. The user's tailscale client handles discovery and routing.
+     * Tailscale connection info — present when workspace was provisioned with tailscale.
      */
     tailscale?: {
       /** Node name on the tailnet */
       nodeName: string;
       /** Headscale node ID (numeric). Useful for headscale API calls. */
       nodeId: string;
+      /** Tailscale IP address (e.g., "100.64.0.2") */
+      ip: string;
+      /** SSH command via Tailscale (e.g., "ssh root@100.64.0.2") */
+      sshCommand: string;
+      /** VS Code Remote-SSH command (e.g., "code --remote ssh-remote+root@100.64.0.2 /workspaces/repo") */
+      vscodeCommand: string;
     };
 
     /**

@@ -15,18 +15,25 @@ import {
   loginAndCreateToken,
 } from './setup-helpers.js';
 
-// Load .env.coder-staging if it exists (explicit env vars take precedence)
+// Load env files if they exist (explicit env vars take precedence).
+// Priority: env vars > .env.coder-self-hosted > .env.coder-staging
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const envFile = resolve(__dirname, '../../../.env.coder-staging');
-if (existsSync(envFile)) {
-  for (const line of readFileSync(envFile, 'utf-8').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const val = trimmed.slice(eq + 1).trim();
-    if (!process.env[key]) process.env[key] = val;
+const envFiles = [
+  resolve(__dirname, '../../../.env.coder-self-hosted'),
+  resolve(__dirname, '../../../.env.coder-staging'),
+];
+for (const envFile of envFiles) {
+  if (existsSync(envFile)) {
+    for (const line of readFileSync(envFile, 'utf-8').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const val = trimmed.slice(eq + 1).trim();
+      if (!process.env[key]) process.env[key] = val;
+    }
+    break; // Use the first env file found
   }
 }
 
