@@ -70,7 +70,8 @@ async function execOrThrow(
  */
 export async function installSudocode(
   codespaceName: string,
-  exec: ExecFn
+  exec: ExecFn,
+  workspaceDir?: string,
 ): Promise<void> {
   // Ensure Node.js >= 18 is available, then install sudocode.
   //
@@ -81,6 +82,9 @@ export async function installSudocode(
   //
   // All steps are chained in a single command because nvm state doesn't
   // reliably persist across separate SSH sessions (bash -l -c invocations).
+  const initCmd = workspaceDir
+    ? `cd ${workspaceDir} && sudocode init`
+    : 'sudocode init';
   const cmd =
     // Try nvm first (Codespaces images)
     'export NVM_DIR="$HOME/.nvm"; ' +
@@ -92,7 +96,7 @@ export async function installSudocode(
     '  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && ' +
     '  sudo apt-get install -y nodejs; ' +
     'fi; ' +
-    'node --version && npm install -g sudocode && sudocode init';
+    `node --version && npm install -g sudocode && ${initCmd}`;
 
   await execOrThrow(exec, codespaceName, cmd, {
     timeout: 300_000, // 5 minutes — npm install with native deps can be slow
@@ -115,7 +119,8 @@ export async function installSudocode(
 export async function applySetupConfig(
   codespaceName: string,
   exec: ExecFn,
-  setup: SetupConfig
+  setup: SetupConfig,
+  workspaceDir?: string,
 ): Promise<void> {
   // 1. Configure credentials
   if (setup.credentials?.claudeLtt) {
@@ -137,6 +142,7 @@ export async function applySetupConfig(
 
   // 2. Install services from registry
   if (setup.services?.length) {
+    const cdPrefix = workspaceDir ? `cd ${workspaceDir} && ` : '';
     for (const svc of setup.services) {
       const def = getServiceDefinition(svc.name);
       if (!def) {
@@ -144,7 +150,7 @@ export async function applySetupConfig(
       }
       // Skip services with empty install commands
       if (!def.install) continue;
-      await exec(codespaceName, def.install);
+      await exec(codespaceName, `${cdPrefix}${def.install}`);
     }
   }
 
@@ -377,8 +383,10 @@ export async function startServices(
   name: string,
   exec: ExecFn,
   services: ResolvedService[],
+  workDir?: string,
 ): Promise<number[]> {
   const startedPorts: number[] = [];
+  const cdPrefix = workDir ? `cd ${workDir} && ` : '';
 
   for (const svc of services) {
     if (!svc.start || !svc.port) continue;
@@ -400,7 +408,7 @@ export async function startServices(
     // setsid creates a new session so the service survives SSH disconnection.
     // The port poll keeps the SSH session alive until the service is ready.
     const startAndWaitCmd =
-      `setsid ${svc.start} & ` +
+      `${cdPrefix}setsid ${svc.start} & ` +
       `for i in $(seq 1 30); do ` +
       `curl -sf --max-time 2 -o /dev/null http://localhost:${svc.port}/ 2>/dev/null && break || ` +
       `curl -sf --max-time 2 -o /dev/null http://localhost:${svc.port}/health 2>/dev/null && break; ` +

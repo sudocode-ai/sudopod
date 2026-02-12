@@ -41,13 +41,10 @@ function registerWorkspaceCommands(parent: Command, resolveProvider: () => Provi
     .option('--branch <branch>', 'git branch (default: current branch)')
     .option('--retention <days>', 'retention days', '7')
     .option('--machine <type>', 'machine type', 'default')
-    .option('--service <name[:port]...>', 'services to install (e.g. --service claude-code --service aider:5000)')
+    .option('--service <name[:port]>', 'services to install, repeatable (e.g. --service claude-code --service aider:5000)', (val: string, acc: string[]) => { acc.push(val); return acc; }, [] as string[])
     .option('--setup-script <script>', 'one-time setup script')
-    .option('--port <port>', 'primary service port', '3000')
     .option('--idle-timeout <minutes>', 'idle timeout in minutes')
-    .option('--tailscale', 'auto-generate preauthkey from stored config')
-    .option('--tailscale-auth-key <key>', 'tailscale auth key (manual)')
-    .option('--tailscale-server <url>', 'tailscale control server URL')
+    .option('--tailscale', 'pass configured Headscale auth token to workspace (only use if hosting your own Headscale node)')
     .action(async (opts) => { await handleCreate(getCtx(), opts); });
 
   parent
@@ -141,10 +138,10 @@ const tailscale = program
 
 tailscale
   .command('connect')
-  .description('Join a tailnet and store admin credentials')
-  .requiredOption('--control-server <url>', 'Headscale control server URL')
-  .requiredOption('--auth-key <key>', 'Preauthkey for joining the tailnet')
-  .requiredOption('--api-key <key>', 'Headscale admin API key')
+  .description('Join a tailnet (zero-arg after headscale start, or pass flags for external Headscale)')
+  .option('--control-server <url>', 'Headscale control server URL (default: from stored config)')
+  .option('--auth-key <key>', 'Preauthkey for joining the tailnet (default: auto-generated)')
+  .option('--api-key <key>', 'Headscale admin API key (default: from stored config)')
   .action(async (opts) => {
     await handleTailscaleConnect(opts, !!program.opts().json);
   });

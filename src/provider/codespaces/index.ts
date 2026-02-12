@@ -134,9 +134,12 @@ export class CodespacesProvider implements Provider {
     // Wait for codespace to be available
     await this.waitForStatus(codespaceName, 'running', 300_000);
 
+    // Resolve workspace directory early — needed for install and setup
+    const workspaceDir = options.setup?.workspaceDir ?? `/workspaces/${options.repository.repo}`;
+
     // Apply optional one-time setup config (credentials, services, tailscale, scripts)
     if (options.setup) {
-      await applySetupConfig(codespaceName, execInCodespace, options.setup);
+      await applySetupConfig(codespaceName, execInCodespace, options.setup, workspaceDir);
     }
 
     // Resolve services from setup config
@@ -147,6 +150,7 @@ export class CodespacesProvider implements Provider {
     const manifest: WorkspaceManifest = {
       version: 1,
       services: resolvedServices,
+      workspaceDir,
       credentials: options.setup?.credentials,
       tailscale: options.setup?.tailscale
         ? {
@@ -348,7 +352,7 @@ export class CodespacesProvider implements Provider {
     manifest: WorkspaceManifest,
   ): Promise<void> {
     // Start all services
-    const startedPorts = await startServices(name, execInCodespace, manifest.services);
+    const startedPorts = await startServices(name, execInCodespace, manifest.services, manifest.workspaceDir);
 
     // Wait for each service port to be ready
     for (const port of startedPorts) {

@@ -227,6 +227,18 @@ export interface SetupConfig {
   setupScript?: string;
 
   /**
+   * Full path to the repository directory inside the workspace.
+   * Used as the working directory when starting services (e.g., sudocode server).
+   *
+   * Default: `/workspaces/${repository.repo}` (derived from CreateOptions.repository)
+   *
+   * This is a full path override — when provided, it replaces the default entirely.
+   * Override this if your devcontainer or Coder template mounts the repo
+   * at a non-standard path.
+   */
+  workspaceDir?: string;
+
+  /**
    * Tailscale configuration for private network access.
    * When provided, the provider installs Tailscale and joins the specified tailnet
    * during workspace creation.

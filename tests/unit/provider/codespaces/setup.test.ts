@@ -341,6 +341,51 @@ describe('startServices', () => {
     expect(execCalls).toHaveLength(0);
   });
 
+  it('should prepend cd when workDir is provided', async () => {
+    const mockExec = createMockExec({
+      'pgrep': { exitCode: 0, stdout: '' },
+    });
+
+    const services: ResolvedService[] = [
+      {
+        name: 'sudocode',
+        type: 'service',
+        install: '',
+        start: 'nohup sudocode server --port 3000 > /tmp/sudocode-3000.log 2>&1',
+        check: 'pgrep -f "sudocode server.*--port 3000" || true',
+        port: 3000,
+      },
+    ];
+
+    await startServices('my-cs', mockExec, services, '/workspaces/my-repo');
+
+    const startCmd = execCalls.find(c => c.command.includes('setsid'));
+    expect(startCmd).toBeDefined();
+    expect(startCmd!.command).toMatch(/^cd \/workspaces\/my-repo && setsid/);
+  });
+
+  it('should not prepend cd when workDir is omitted', async () => {
+    const mockExec = createMockExec({
+      'pgrep': { exitCode: 0, stdout: '' },
+    });
+
+    const services: ResolvedService[] = [
+      {
+        name: 'sudocode',
+        type: 'service',
+        install: '',
+        start: 'nohup sudocode server --port 3000 > /tmp/sudocode-3000.log 2>&1',
+        port: 3000,
+      },
+    ];
+
+    await startServices('my-cs', mockExec, services);
+
+    const startCmd = execCalls.find(c => c.command.includes('setsid'));
+    expect(startCmd).toBeDefined();
+    expect(startCmd!.command).toMatch(/^setsid/);
+  });
+
   it('should return ports for all startable services', async () => {
     const mockExec = createMockExec();
 

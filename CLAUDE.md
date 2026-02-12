@@ -30,6 +30,40 @@ sudopod — CLI tool for provisioning and managing cloud development workspaces 
 - `tests/integration/` — Integration tests (require real infrastructure)
 - `specs/` — Sudocode spec markdown files
 
+## CLI (Dev Mode)
+
+Run the CLI directly from source (no build step needed):
+
+```bash
+npx tsx src/cli.ts <provider> <command> [options]
+```
+
+Common examples:
+
+```bash
+# Coder workspace with Tailscale + sudocode service
+npx tsx src/cli.ts coder create --repo owner/repo --tailscale --service sudocode:3002
+
+# Resume most recent workspace
+npx tsx src/cli.ts coder resume
+
+# List workspaces
+npx tsx src/cli.ts coder list
+
+# Stop / delete
+npx tsx src/cli.ts coder stop <id>
+npx tsx src/cli.ts coder delete <id>
+
+# Headscale lifecycle (local Tailscale control server)
+npx tsx src/cli.ts headscale start
+npx tsx src/cli.ts headscale stop
+
+# Join local machine to tailnet
+npx tsx src/cli.ts tailscale connect
+```
+
+Providers: `coder`, `codespaces`, `hub`. See `npx tsx src/cli.ts --help` for full usage.
+
 ## Testing
 
 - Unit tests: `npm test`

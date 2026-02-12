@@ -8,12 +8,14 @@ export interface ProviderAuthConfig {
 }
 
 export interface TailscaleConfig {
-  /** Headscale control server URL */
+  /** Headscale control server URL (ngrok public URL when using local Headscale) */
   controlServer: string;
   /** Headscale admin API key for generating preauthkeys */
   apiKey: string;
   /** Directory for persisting local Tailscale daemon state */
   stateDir?: string;
+  /** PID of the ngrok tunnel process (for cleanup by headscale stop) */
+  ngrokPid?: number;
 }
 
 export interface SudopodConfig {

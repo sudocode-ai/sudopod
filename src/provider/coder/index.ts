@@ -145,8 +145,11 @@ export class CoderProvider implements Provider {
 
       const workspaceName = ready.name;
 
+      // Resolve workspace directory early — needed for install and setup
+      const workspaceDir = options.setup?.workspaceDir ?? `/workspaces/${options.repository.repo}`;
+
       // Install Node.js + sudocode — prerequisite for all workspaces
-      await installSudocode(workspaceName, this.exec);
+      await installSudocode(workspaceName, this.exec, workspaceDir);
 
       // Apply optional one-time setup config (credentials, services, tailscale, scripts)
       if (options.setup) {
@@ -161,7 +164,7 @@ export class CoderProvider implements Provider {
               }
             : undefined,
         };
-        await applySetupConfig(workspaceName, this.exec, setupWithCoderDefaults);
+        await applySetupConfig(workspaceName, this.exec, setupWithCoderDefaults, workspaceDir);
 
         // Set up .vscode-server symlink so VS Code Remote-SSH persists on EBS.
         // /root/.vscode-server is on ephemeral overlay; symlink to /workspaces/ (EBS).
@@ -192,6 +195,7 @@ export class CoderProvider implements Provider {
       const manifest: WorkspaceManifest = {
         version: 1,
         services: resolvedServices,
+        workspaceDir,
         credentials: options.setup?.credentials,
         tailscale: options.setup?.tailscale
           ? {
@@ -410,7 +414,7 @@ export class CoderProvider implements Provider {
   ): Promise<void> {
     // startServices now handles both starting and port verification in a single
     // SSH command (required for Coder — processes die between SSH sessions).
-    await startServices(name, this.exec, manifest.services);
+    await startServices(name, this.exec, manifest.services, manifest.workspaceDir);
   }
 
   /**
@@ -472,7 +476,7 @@ export class CoderProvider implements Provider {
     }
 
     const ip = manifest.tailscale.ip;
-    const repo = workspace.repository.repo || 'workspace';
+    const workDir = manifest.workspaceDir ?? `/workspaces/${workspace.repository.repo || 'workspace'}`;
     const nodeName = manifest.tailscale.nodeName ?? workspace.name;
 
     return {
@@ -484,14 +488,14 @@ export class CoderProvider implements Provider {
           nodeId: manifest.tailscale.nodeId,
           ip,
           sshCommand: `ssh root@${ip}`,
-          vscodeCommand: `code --remote ssh-remote+root@${ip} /workspaces/${repo}`,
+          vscodeCommand: `code --remote ssh-remote+root@${ip} ${workDir}`,
         },
         ssh: {
           command: `ssh root@${ip}`,
         },
         urls: {
           ...workspace.connection.urls,
-          vscode: `code --remote ssh-remote+root@${ip} /workspaces/${repo}`,
+          vscode: `code --remote ssh-remote+root@${ip} ${workDir}`,
         },
       },
     };
@@ -513,8 +517,8 @@ export class CoderProvider implements Provider {
       params.push({ name: 'branch', value: options.repository.branch });
     }
 
-    // Machine type (if provided)
-    if (options.machineType) {
+    // Machine type (if provided and not the CLI default placeholder)
+    if (options.machineType && options.machineType !== 'default') {
       params.push({ name: 'machine_type', value: options.machineType });
     }
 

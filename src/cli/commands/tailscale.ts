@@ -17,9 +17,9 @@ import { printError, printSuccess, printJson } from '../output.js';
 // ============================================================================
 
 export interface TailscaleConnectOptions {
-  controlServer: string;
-  authKey: string;
-  apiKey: string;
+  controlServer?: string;
+  authKey?: string;
+  apiKey?: string;
 }
 
 export async function handleTailscaleConnect(
@@ -27,6 +27,41 @@ export async function handleTailscaleConnect(
   jsonOutput: boolean,
 ): Promise<void> {
   try {
+    // Resolve control server and API key — flags override stored config
+    const config = loadConfig();
+    const controlServer = opts.controlServer ?? config.tailscale?.controlServer;
+    const apiKey = opts.apiKey ?? config.tailscale?.apiKey;
+
+    if (!controlServer) {
+      throw new Error(
+        'No control server configured. Either:\n' +
+        '  - Run `sudopod headscale start` first, or\n' +
+        '  - Pass --control-server <url>'
+      );
+    }
+
+    // Resolve auth key — auto-generate if not provided
+    let authKey = opts.authKey;
+    if (!authKey) {
+      if (!apiKey) {
+        throw new Error(
+          'No API key available to auto-generate preauthkey. Either:\n' +
+          '  - Run `sudopod headscale start` first, or\n' +
+          '  - Pass --auth-key <key>'
+        );
+      }
+      const client = new HeadscaleClient({ baseUrl: controlServer, apiKey });
+      const users = await client.listUsers();
+      if (users.length === 0) {
+        throw new Error('No users found on Headscale. Create one first.');
+      }
+      authKey = await client.createPreauthKey(users[0].id, {
+        ephemeral: false,
+        reusable: false,
+        expiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+    }
+
     // Validate that tailscale binary is available
     try {
       execSync('which tailscale', { stdio: 'pipe' });
@@ -36,20 +71,22 @@ export async function handleTailscaleConnect(
       );
     }
 
-    // Start tailscaled if not already running (userspace networking for safety)
+    // Check if tailscaled is running
     const statusResult = execSync('tailscale status 2>&1 || true', {
       encoding: 'utf-8',
     });
     const daemonRunning =
       statusResult.includes('NeedsLogin') ||
       statusResult.includes('Stopped') ||
+      statusResult.includes('Logged out') ||
       (!statusResult.includes('is tailscaled running') &&
         !statusResult.includes('connect: connection refused'));
 
     if (!daemonRunning) {
+      // Start tailscaled — use inherit so sudo can prompt for password
       execSync(
         'sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --state=tailscaled.state > /tmp/tailscaled.log 2>&1 &',
-        { stdio: 'pipe' },
+        { stdio: 'inherit' },
       );
       // Wait for socket
       for (let i = 0; i < 20; i++) {
@@ -62,38 +99,35 @@ export async function handleTailscaleConnect(
       }
     }
 
-    // Join the tailnet
+    // Join the tailnet — use inherit so sudo can prompt for password if needed
     const upArgs = [
-      'sudo tailscale up',
-      `--authkey=${opts.authKey}`,
+      'tailscale up',
+      `--authkey=${authKey}`,
       '--accept-dns=false',
-      `--login-server=${opts.controlServer}`,
+      `--login-server=${controlServer}`,
     ];
-    execSync(upArgs.join(' '), { stdio: 'pipe', timeout: 30_000 });
+    execSync(upArgs.join(' '), { stdio: 'inherit', timeout: 30_000 });
 
-    // Validate the API key by listing users
-    const client = new HeadscaleClient({
-      baseUrl: opts.controlServer,
-      apiKey: opts.apiKey,
-    });
-    await client.listUsers();
-
-    // Store credentials in config
-    const config = loadConfig();
-    config.tailscale = {
-      controlServer: opts.controlServer,
-      apiKey: opts.apiKey,
-    };
-    saveConfig(config);
+    // Store credentials in config (if we have an API key)
+    if (apiKey) {
+      const updatedConfig = loadConfig();
+      updatedConfig.tailscale = {
+        controlServer,
+        apiKey,
+      };
+      saveConfig(updatedConfig);
+    }
 
     if (jsonOutput) {
       printJson({
-        controlServer: opts.controlServer,
+        controlServer,
         status: 'connected',
       });
     } else {
-      printSuccess(`Connected to tailnet at ${opts.controlServer}`);
-      printSuccess('Admin API key stored in config.');
+      printSuccess(`Connected to tailnet at ${controlServer}`);
+      if (apiKey) {
+        printSuccess('Admin API key stored in config.');
+      }
     }
   } catch (err) {
     printError(err instanceof Error ? err.message : String(err));

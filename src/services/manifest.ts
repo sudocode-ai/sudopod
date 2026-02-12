@@ -17,6 +17,8 @@ import type { ExecFn } from '../provider/types.js';
 export interface WorkspaceManifest {
   version: 1;
   services: ResolvedService[];
+  /** Resolved repository directory path. Used as working directory for services. */
+  workspaceDir?: string;
   credentials?: { claudeLtt?: string };
   tailscale?: {
     stateDir: string;

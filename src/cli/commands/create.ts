@@ -13,11 +13,8 @@ export interface CreateCommandOptions {
   machine: string;
   service?: string[];
   setupScript?: string;
-  port: string;
   idleTimeout?: string;
   tailscale?: boolean;
-  tailscaleAuthKey?: string;
-  tailscaleServer?: string;
 }
 
 export async function handleCreate(
@@ -30,10 +27,9 @@ export async function handleCreate(
     const name = generateName(repo, branch);
 
     // Auto-generate tailscale preauthkey if --tailscale flag is set
-    if (opts.tailscale && !opts.tailscaleAuthKey) {
-      const { authKey, controlServer } = await autoGeneratePreauthKey();
-      opts.tailscaleAuthKey = authKey;
-      opts.tailscaleServer = opts.tailscaleServer ?? controlServer;
+    let tailscaleConfig: { authKey: string; controlServer: string; headscaleApiKey: string } | undefined;
+    if (opts.tailscale) {
+      tailscaleConfig = await autoGeneratePreauthKey();
     }
 
     const createOpts: CreateOptions = {
@@ -41,7 +37,7 @@ export async function handleCreate(
       repository: { owner, repo, branch },
       retentionDays: parseInt(opts.retention, 10),
       machineType: opts.machine,
-      setup: buildSetupConfig(opts),
+      setup: buildSetupConfig(opts, tailscaleConfig),
     };
 
     const workspace = await ctx.provider.create(createOpts);
@@ -115,7 +111,7 @@ function parseService(value: string): ServiceConfig {
 /**
  * Auto-generate an ephemeral preauthkey using stored Headscale admin credentials.
  */
-async function autoGeneratePreauthKey(): Promise<{ authKey: string; controlServer: string }> {
+async function autoGeneratePreauthKey(): Promise<{ authKey: string; controlServer: string; headscaleApiKey: string }> {
   const config = loadConfig();
   if (!config.tailscale?.apiKey || !config.tailscale?.controlServer) {
     throw new Error(
@@ -142,33 +138,34 @@ async function autoGeneratePreauthKey(): Promise<{ authKey: string; controlServe
     expiry: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   });
 
-  return { authKey, controlServer: config.tailscale.controlServer };
+  return { authKey, controlServer: config.tailscale.controlServer, headscaleApiKey: config.tailscale.apiKey };
 }
 
-function buildSetupConfig(opts: CreateCommandOptions) {
+function buildSetupConfig(
+  opts: CreateCommandOptions,
+  tailscaleConfig?: { authKey: string; controlServer: string; headscaleApiKey: string },
+) {
   const services = opts.service?.map(parseService);
-  const port = parseInt(opts.port, 10);
 
   const hasSetup =
     services?.length ||
     opts.setupScript ||
     opts.idleTimeout ||
-    opts.tailscaleAuthKey ||
-    port !== 3000;
+    tailscaleConfig;
 
   if (!hasSetup) return undefined;
 
   return {
     services,
-    port,
     lifecycle: opts.idleTimeout
       ? { idleTimeoutMinutes: parseInt(opts.idleTimeout, 10) }
       : undefined,
     setupScript: opts.setupScript,
-    tailscale: opts.tailscaleAuthKey
+    tailscale: tailscaleConfig
       ? {
-          authKey: opts.tailscaleAuthKey,
-          controlServer: opts.tailscaleServer,
+          authKey: tailscaleConfig.authKey,
+          controlServer: tailscaleConfig.controlServer,
+          headscaleApiKey: tailscaleConfig.headscaleApiKey,
         }
       : undefined,
   };

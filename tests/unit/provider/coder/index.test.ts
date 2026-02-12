@@ -664,6 +664,7 @@ describe('CoderProvider', () => {
             stateDir: '/workspaces/.tailscale',
           }),
         }),
+        '/workspaces/app',
       );
     });
 
@@ -720,6 +721,7 @@ describe('CoderProvider', () => {
         expect.arrayContaining([
           expect.objectContaining({ name: 'sudocode', port: 4000 }),
         ]),
+        '/workspaces/app',
       );
     });
 
@@ -785,6 +787,7 @@ describe('CoderProvider', () => {
         'test-workspace',
         expect.any(Function),
         manifest.services,
+        undefined,
       );
     });
 

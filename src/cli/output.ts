@@ -34,14 +34,19 @@ export function printWorkspace(ws: Workspace): void {
   console.log(`${chalk.bold(ws.name)}  ${formatStatus(ws.status)}`);
   console.log(`  ID:   ${ws.id}`);
   console.log(`  Repo: ${ws.repository.owner}/${ws.repository.repo}`);
-  console.log(`  SSH:  ${ws.connection.ssh.command}`);
 
   if (ws.connection.tailscale) {
-    console.log(`  Tailscale: ${ws.connection.tailscale.nodeName}`);
+    const ts = ws.connection.tailscale;
+    console.log(`  Tailscale: ${ts.ip} (${ts.nodeName})`);
+    console.log(`  SSH:     ${ts.sshCommand}`);
+    console.log(`  VS Code: ${ts.vscodeCommand}`);
+  } else {
+    console.log(`  SSH:  ${ws.connection.ssh.command}`);
   }
 
   if (ws.connection.urls) {
     for (const [label, url] of Object.entries(ws.connection.urls)) {
+      if (label === 'vscode' && ws.connection.tailscale) continue;
       console.log(`  ${label}: ${url}`);
     }
   }

@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { loadConfig, saveConfig } from '../config.js';
 import { printError, printSuccess, printJson } from '../output.js';
+import { startNgrokTunnel, stopNgrokTunnel } from '../../ngrok/tunnel.js';
+import { HeadscaleClient } from '../../headscale/client.js';
 
 /**
  * Resolve the path to the Docker Compose directory.
@@ -79,13 +81,15 @@ export async function handleHeadscaleStart(
     try {
       const ps = dockerExec('docker compose ps --format json', composeDir);
       if (ps && ps.includes('"headscale"') && ps.includes('"running"')) {
+        const existingConfig = loadConfig();
+        const existingUrl = existingConfig.tailscale?.controlServer ?? `http://localhost:${port}`;
         if (jsonOutput) {
           printJson({
             status: 'already_running',
-            url: `http://localhost:${port}`,
+            url: existingUrl,
           });
         } else {
-          printSuccess(`Headscale is already running on port ${port}.`);
+          printSuccess(`Headscale is already running: ${existingUrl}`);
         }
         return;
       }
@@ -130,29 +134,57 @@ export async function handleHeadscaleStart(
       10_000,
     );
 
-    const controlServer = `http://localhost:${port}`;
+    // Start ngrok tunnel so remote workspaces can reach local Headscale
+    if (!jsonOutput) {
+      console.log('Starting ngrok tunnel...');
+    }
+    const portNum = parseInt(port, 10);
+    const ngrok = await startNgrokTunnel(portNum);
+    const controlServer = ngrok.url;
 
     // Store in config
     const config = loadConfig();
     config.tailscale = {
       controlServer,
       apiKey,
+      ngrokPid: ngrok.pid,
       ...(config.tailscale?.stateDir ? { stateDir: config.tailscale.stateDir } : {}),
     };
     saveConfig(config);
+
+    // Generate a preauthkey for the local machine to join the tailnet
+    const client = new HeadscaleClient({ baseUrl: 'http://localhost:' + port, apiKey });
+    const users = await client.listUsers();
+    const userId = users.length > 0 ? users[0].id : undefined;
+    let authKey: string | undefined;
+    if (userId) {
+      authKey = await client.createPreauthKey(userId, {
+        ephemeral: false,
+        reusable: false,
+        expiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+    }
 
     if (jsonOutput) {
       printJson({
         status: 'started',
         url: controlServer,
         apiKey,
+        authKey,
+        ngrokPid: ngrok.pid,
       });
     } else {
-      printSuccess(`Headscale started on ${controlServer}`);
-      console.log(`  API key: ${apiKey}`);
+      printSuccess(`Headscale started`);
+      console.log(`  Control server: ${controlServer}`);
       console.log(`  Credentials saved to config.`);
       console.log('');
-      console.log(`  Next: sudopod tailscale connect --control-server ${controlServer} --auth-key <key> --api-key ${apiKey}`);
+      if (authKey) {
+        console.log('  To connect your machine to the tailnet, run:');
+        console.log(`    tailscale up --login-server=${controlServer} --authkey=${authKey} --accept-dns=false`);
+        console.log('');
+      }
+      console.log('  To create a workspace on the tailnet:');
+      console.log('    sudopod coder create --tailscale');
     }
   } catch (err) {
     printError(err instanceof Error ? err.message : String(err));
@@ -172,6 +204,14 @@ export async function handleHeadscaleStop(jsonOutput: boolean): Promise<void> {
       throw new Error('Docker is not available.');
     }
 
+    // Kill ngrok tunnel if running
+    const config = loadConfig();
+    if (config.tailscale?.ngrokPid) {
+      stopNgrokTunnel(config.tailscale.ngrokPid);
+      config.tailscale.ngrokPid = undefined;
+      saveConfig(config);
+    }
+
     const composeDir = findComposeDir();
 
     execSync('docker compose down -v', {
@@ -183,7 +223,7 @@ export async function handleHeadscaleStop(jsonOutput: boolean): Promise<void> {
     if (jsonOutput) {
       printJson({ status: 'stopped' });
     } else {
-      printSuccess('Headscale stopped and volumes removed.');
+      printSuccess('Headscale and ngrok stopped.');
     }
   } catch (err) {
     printError(err instanceof Error ? err.message : String(err));
