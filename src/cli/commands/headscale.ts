@@ -77,21 +77,32 @@ export async function handleHeadscaleStart(
     const composeDir = findComposeDir();
     const port = opts.port ?? '8080';
 
-    // Check if already running
+    // Check if already running — verify BOTH Docker container AND ngrok tunnel are alive
     try {
       const ps = dockerExec('docker compose ps --format json', composeDir);
       if (ps && ps.includes('"headscale"') && ps.includes('"running"')) {
         const existingConfig = loadConfig();
-        const existingUrl = existingConfig.tailscale?.controlServer ?? `http://localhost:${port}`;
-        if (jsonOutput) {
-          printJson({
-            status: 'already_running',
-            url: existingUrl,
-          });
-        } else {
-          printSuccess(`Headscale is already running: ${existingUrl}`);
+        const existingUrl = existingConfig.tailscale?.controlServer;
+        const ngrokPid = existingConfig.tailscale?.ngrokPid;
+
+        // Verify ngrok is still alive — if not, we need to restart it
+        const ngrokAlive = ngrokPid && (() => {
+          try { process.kill(ngrokPid, 0); return true; } catch { return false; }
+        })();
+
+        if (existingUrl && ngrokAlive) {
+          if (jsonOutput) {
+            printJson({ status: 'already_running', url: existingUrl });
+          } else {
+            printSuccess(`Headscale is already running: ${existingUrl}`);
+          }
+          return;
         }
-        return;
+
+        // Docker is running but ngrok is dead — restart ngrok
+        if (!jsonOutput) {
+          console.log('Headscale is running but ngrok tunnel is dead. Restarting tunnel...');
+        }
       }
     } catch {
       // Not running, continue with start

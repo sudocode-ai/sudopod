@@ -100,10 +100,12 @@ export async function handleTailscaleConnect(
     }
 
     // Join the tailnet — use inherit so sudo can prompt for password if needed
+    // --force-reauth needed when switching between Headscale instances (e.g. new ngrok URL)
     const upArgs = [
       'tailscale up',
       `--authkey=${authKey}`,
       '--accept-dns=false',
+      '--force-reauth',
       `--login-server=${controlServer}`,
     ];
     execSync(upArgs.join(' '), { stdio: 'inherit', timeout: 30_000 });
