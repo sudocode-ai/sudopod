@@ -10,13 +10,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Module mocks — hoisted by vitest
-vi.mock('../../../../src/provider/coder/cli.js', () => ({
+// Mock coder-sdk/exec.js (where CoderOrchestrator imports createCoderExecFn)
+vi.mock('../../../../src/coder-sdk/exec.js', () => ({
   createCoderExecFn: vi.fn().mockReturnValue(
     vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
   ),
 }));
 
-vi.mock('../../../../src/provider/codespaces/setup.js', () => ({
+vi.mock('../../../../src/provider/setup.js', () => ({
   installSudocode: vi.fn().mockResolvedValue(undefined),
   applySetupConfig: vi.fn().mockResolvedValue(undefined),
   setupTailscale: vi.fn().mockResolvedValue({ tier: 'already-running', hostname: 'test' }),
@@ -24,6 +25,29 @@ vi.mock('../../../../src/provider/codespaces/setup.js', () => ({
 }));
 
 vi.mock('../../../../src/services/manifest.js', () => ({
+  buildManifest: vi.fn().mockImplementation((options: {
+    services?: Array<{ name: string; port?: number }>;
+    workspaceDir?: string;
+    credentials?: unknown;
+    tailscale?: unknown;
+    lifecycle?: unknown;
+    setupScript?: string;
+  }) => ({
+    version: 1,
+    services: (options.services ?? []).map((s: { name: string; port?: number }) => ({
+      name: s.name,
+      type: 'service' as const,
+      install: '',
+      start: `nohup ${s.name} --port ${s.port ?? 3000}`,
+      port: s.port ?? 3000,
+    })),
+    workspaceDir: options.workspaceDir,
+    credentials: options.credentials,
+    tailscale: options.tailscale,
+    lifecycle: options.lifecycle,
+    setupScript: options.setupScript,
+    createdAt: new Date().toISOString(),
+  })),
   writeManifest: vi.fn().mockResolvedValue(undefined),
   readManifest: vi.fn().mockResolvedValue(null),
   DEFAULT_MANIFEST_PATH: '/workspaces/.sudopod/manifest.json',
@@ -53,10 +77,9 @@ import {
   ProviderError,
 } from '../../../../src/provider/errors.js';
 import type { CoderWorkspace, CoderWorkspaceBuild, CoderUser } from '../../../../src/coder-sdk/types.js';
-import { applySetupConfig, setupTailscale, startServices } from '../../../../src/provider/codespaces/setup.js';
-import { writeManifest, readManifest } from '../../../../src/services/manifest.js';
-import { resolveService } from '../../../../src/services/registry.js';
-import { createCoderExecFn } from '../../../../src/provider/coder/cli.js';
+import { applySetupConfig, setupTailscale, startServices } from '../../../../src/provider/setup.js';
+import { buildManifest, writeManifest, readManifest } from '../../../../src/services/manifest.js';
+import { createCoderExecFn } from '../../../../src/coder-sdk/exec.js';
 
 // =============================================================================
 // Test Fixtures
@@ -139,8 +162,9 @@ function createMockedProvider() {
     authToken: 'test-token',
   });
 
-  // Access the private client and mock its methods
-  const client = (provider as any).client;
+  // Access the orchestrator's private client and mock its methods
+  const orchestrator = (provider as any).orchestrator;
+  const client = orchestrator.client;
   const mocks = {
     getCurrentUser: vi.spyOn(client, 'getCurrentUser'),
     getTemplateByName: vi.spyOn(client, 'getTemplateByName'),
@@ -174,12 +198,28 @@ describe('CoderProvider', () => {
     vi.mocked(writeManifest).mockResolvedValue(undefined);
     vi.mocked(applySetupConfig).mockResolvedValue(undefined);
     vi.mocked(setupTailscale).mockResolvedValue({ tier: 'already-running', hostname: 'test' });
-    vi.mocked(resolveService).mockImplementation((name: string, port?: number) => ({
-      name,
-      type: 'service' as const,
-      install: '',
-      start: `nohup ${name} --port ${port ?? 3000}`,
-      port: port ?? 3000,
+    vi.mocked(buildManifest).mockImplementation((options: {
+      services?: Array<{ name: string; port?: number }>;
+      workspaceDir?: string;
+      credentials?: unknown;
+      tailscale?: unknown;
+      lifecycle?: unknown;
+      setupScript?: string;
+    }) => ({
+      version: 1 as const,
+      services: (options.services ?? []).map((s: { name: string; port?: number }) => ({
+        name: s.name,
+        type: 'service' as const,
+        install: '',
+        start: `nohup ${s.name} --port ${s.port ?? 3000}`,
+        port: s.port ?? 3000,
+      })),
+      workspaceDir: options.workspaceDir,
+      credentials: options.credentials,
+      tailscale: options.tailscale,
+      lifecycle: options.lifecycle,
+      setupScript: options.setupScript,
+      createdAt: new Date().toISOString(),
     }));
 
     const setup = createMockedProvider();
@@ -700,7 +740,11 @@ describe('CoderProvider', () => {
         },
       });
 
-      expect(resolveService).toHaveBeenCalledWith('sudocode', 4000);
+      expect(buildManifest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          services: [{ name: 'sudocode', port: 4000 }],
+        }),
+      );
     });
 
     it('calls startServices after writing manifest', async () => {
@@ -803,7 +847,7 @@ describe('CoderProvider', () => {
 
       // Mock exec: node check passes (exit 0)
       const execMock = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '/usr/bin/node', stderr: '' });
-      (provider as any).exec = execMock;
+      (provider as any).orchestrator.exec = execMock;
 
       await provider.resume('ws-1');
 
@@ -829,7 +873,7 @@ describe('CoderProvider', () => {
 
       // Mock exec: node check passes (exit 0), other commands succeed
       const execMock = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '/usr/bin/node', stderr: '' });
-      (provider as any).exec = execMock;
+      (provider as any).orchestrator.exec = execMock;
 
       await provider.resume('ws-1');
 

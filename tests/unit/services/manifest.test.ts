@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  buildManifest,
   writeManifest,
   readManifest,
   MANIFEST_PATH,
@@ -143,5 +144,109 @@ describe('readManifest', () => {
       'specific-cs',
       expect.stringContaining(MANIFEST_PATH),
     );
+  });
+});
+
+// ============================================================================
+// buildManifest
+// ============================================================================
+
+describe('buildManifest', () => {
+  it('should resolve services via the registry', () => {
+    const manifest = buildManifest({
+      services: [{ name: 'sudocode', port: 3002 }],
+    });
+
+    expect(manifest.version).toBe(1);
+    expect(manifest.services).toHaveLength(1);
+    expect(manifest.services[0].name).toBe('sudocode');
+    expect(manifest.services[0].port).toBe(3002);
+    expect(manifest.services[0].start).toContain('--port 3002');
+    // Verify {port} tokens are resolved
+    expect(JSON.stringify(manifest.services[0])).not.toContain('{port}');
+  });
+
+  it('should use default port when no override specified', () => {
+    const manifest = buildManifest({
+      services: [{ name: 'sudocode' }],
+    });
+
+    expect(manifest.services[0].port).toBe(3000);
+  });
+
+  it('should resolve multiple services', () => {
+    const manifest = buildManifest({
+      services: [
+        { name: 'sudocode', port: 3000 },
+        { name: 'claude-code' },
+      ],
+    });
+
+    expect(manifest.services).toHaveLength(2);
+    expect(manifest.services[0].name).toBe('sudocode');
+    expect(manifest.services[1].name).toBe('claude-code');
+    expect(manifest.services[1].type).toBe('tool');
+  });
+
+  it('should include optional fields when provided', () => {
+    const manifest = buildManifest({
+      services: [{ name: 'sudocode' }],
+      workspaceDir: '/workspaces/my-repo',
+      credentials: { claudeLtt: 'test-token' },
+      tailscale: {
+        stateDir: '/workspaces/.tailscale',
+        controlServer: 'https://headscale.example.com',
+        mode: 'kernel',
+        ip: '100.64.0.2',
+        nodeId: '42',
+        nodeName: 'my-workspace',
+      },
+      lifecycle: { idleTimeoutMinutes: 30 },
+      setupScript: 'npm install',
+    });
+
+    expect(manifest.workspaceDir).toBe('/workspaces/my-repo');
+    expect(manifest.credentials?.claudeLtt).toBe('test-token');
+    expect(manifest.tailscale?.stateDir).toBe('/workspaces/.tailscale');
+    expect(manifest.tailscale?.controlServer).toBe('https://headscale.example.com');
+    expect(manifest.tailscale?.mode).toBe('kernel');
+    expect(manifest.tailscale?.ip).toBe('100.64.0.2');
+    expect(manifest.tailscale?.nodeId).toBe('42');
+    expect(manifest.tailscale?.nodeName).toBe('my-workspace');
+    expect(manifest.lifecycle?.idleTimeoutMinutes).toBe(30);
+    expect(manifest.setupScript).toBe('npm install');
+  });
+
+  it('should omit optional fields when not provided', () => {
+    const manifest = buildManifest({
+      services: [],
+    });
+
+    expect(manifest.workspaceDir).toBeUndefined();
+    expect(manifest.credentials).toBeUndefined();
+    expect(manifest.tailscale).toBeUndefined();
+    expect(manifest.lifecycle).toBeUndefined();
+    expect(manifest.setupScript).toBeUndefined();
+  });
+
+  it('should set createdAt to current time', () => {
+    const before = new Date().toISOString();
+    const manifest = buildManifest({ services: [] });
+    const after = new Date().toISOString();
+
+    expect(manifest.createdAt).toBeDefined();
+    expect(manifest.createdAt >= before).toBe(true);
+    expect(manifest.createdAt <= after).toBe(true);
+  });
+
+  it('should always set version to 1', () => {
+    const manifest = buildManifest({ services: [] });
+    expect(manifest.version).toBe(1);
+  });
+
+  it('should throw for unknown service name', () => {
+    expect(() => buildManifest({
+      services: [{ name: 'nonexistent-service' }],
+    })).toThrow('Unknown service');
   });
 });

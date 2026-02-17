@@ -8,7 +8,7 @@ import {
   applySetupConfig,
   setupTailscale,
   startServices,
-} from '../../../../src/provider/codespaces/setup.js';
+} from '../../../../src/provider/setup.js';
 import type { ExecFn } from '../../../../src/provider/types.js';
 import type { SetupConfig } from '../../../../src/provider/types.js';
 import type { ResolvedService } from '../../../../src/services/registry.js';
@@ -431,6 +431,10 @@ describe('setupTailscale', () => {
         if (command.includes(pattern)) {
           return { exitCode: 0, stdout: '', stderr: '', ...result };
         }
+      }
+      // startTailscaleDaemon checks for "tailscaled ready" in stdout
+      if (command.includes('sudo tailscaled')) {
+        return { exitCode: 0, stdout: 'tailscaled ready', stderr: '' };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
     });

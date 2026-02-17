@@ -196,29 +196,36 @@ describe('Codespaces Provider E2E: Create + Connectivity + Resume', () => {
         tailscale: {
           authKey: codespacePreauthKey,
           controlServer: ngrok.url,
+          headscaleApiKey: apiKey,
         },
       },
     });
     console.log(`  Workspace created: ${workspace.id} (status=${workspace.status})`);
 
-    // 6. Look up codespace Tailscale IP from Headscale
-    //    The provider used the codespace name as the Tailscale hostname
-    console.log('Looking up codespace Tailscale IP...');
-    for (let i = 0; i < 15; i++) {
-      const nodes = await headscale.listNodes();
-      const csNode = nodes.find(
-        (n) => n.givenName !== DOCKER_HOSTNAME && n.name !== DOCKER_HOSTNAME,
-      );
-      if (csNode?.online && csNode.ipAddresses.length > 0) {
-        codespaceIp = csNode.ipAddresses[0];
-        csNodeName = csNode.givenName;
-        console.log(`  Codespace node: ${csNodeName} (${codespaceIp})`);
-        break;
+    // 6. Extract Tailscale IP from provider response (populated by discoverTailscaleNode)
+    if (workspace.connection.tailscale) {
+      codespaceIp = workspace.connection.tailscale.ip;
+      csNodeName = workspace.connection.tailscale.nodeName;
+      console.log(`  Codespace Tailscale: ${csNodeName} (${codespaceIp})`);
+    } else {
+      // Fallback: manual lookup from Headscale if provider didn't populate it
+      console.log('Looking up codespace Tailscale IP from Headscale...');
+      for (let i = 0; i < 15; i++) {
+        const nodes = await headscale.listNodes();
+        const csNode = nodes.find(
+          (n) => n.givenName !== DOCKER_HOSTNAME && n.name !== DOCKER_HOSTNAME,
+        );
+        if (csNode?.online && csNode.ipAddresses.length > 0) {
+          codespaceIp = csNode.ipAddresses[0];
+          csNodeName = csNode.givenName;
+          console.log(`  Codespace node: ${csNodeName} (${codespaceIp})`);
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 2_000));
       }
-      await new Promise((r) => setTimeout(r, 2_000));
     }
     if (!codespaceIp) {
-      throw new Error('Codespace node did not appear in Headscale');
+      throw new Error('Codespace Tailscale IP not available');
     }
   }, 600_000);
 
@@ -250,11 +257,21 @@ describe('Codespaces Provider E2E: Create + Connectivity + Resume', () => {
 
   // ── Create validation ──
 
-  it('provider.create() should return a running workspace', () => {
+  it('provider.create() should return a running workspace with tailscale info', () => {
     expect(workspace).toBeDefined();
     expect(workspace.status).toBe('running');
     expect(workspace.id).toBeTruthy();
-    expect(workspace.connection.ssh.command).toContain(workspace.id);
+
+    // Tailscale connection info should be populated
+    expect(workspace.connection.tailscale).toBeDefined();
+    expect(workspace.connection.tailscale!.ip).toMatch(/^100\.64\./);
+    expect(workspace.connection.tailscale!.nodeName).toBeTruthy();
+    expect(workspace.connection.tailscale!.nodeId).toBeTruthy();
+    expect(workspace.connection.tailscale!.sshCommand).toContain(workspace.connection.tailscale!.ip);
+    expect(workspace.connection.tailscale!.vscodeCommand).toContain(workspace.connection.tailscale!.ip);
+
+    // SSH command should now be the Tailscale-based one
+    expect(workspace.connection.ssh.command).toContain('ssh root@');
   }, 10_000);
 
   it('codespace should be joined to the tailnet', async () => {
@@ -342,7 +359,7 @@ describe('Codespaces Provider E2E: Create + Connectivity + Resume', () => {
     for (let attempt = 0; attempt < 10; attempt++) {
       const result = await execInCodespace(
         workspace.id,
-        `curl -sf --max-time 10 http://${dockerIp}:8888/`,
+        `curl -sf --max-time 10 --socks5 localhost:1055 http://${dockerIp}:8888/`,
         { timeout: 20_000 },
       );
       output = result.stdout;

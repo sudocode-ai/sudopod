@@ -346,20 +346,13 @@ describe('Coder Provider E2E: Create + Connectivity + Resume', () => {
     shell(`docker exec -d tailscale-client ${ncCmd}`, { timeout: 10_000 });
     await new Promise((r) => setTimeout(r, 2_000));
 
-    // Verify SOCKS5 proxy is listening before attempting connections
-    const socksCheck = await exec(
-      workspaceName,
-      'curl -sf --max-time 3 --socks5 localhost:1055 http://100.64.0.1:0/ 2>&1 || ss -tln | grep 1055 || echo "SOCKS5 proxy not found on port 1055"',
-    );
-    console.log(`  SOCKS5 probe: ${socksCheck.stdout.trim().substring(0, 200)}`);
-
     let output = '';
     for (let attempt = 0; attempt < 10; attempt++) {
-      // With --tun=userspace-networking, Tailscale IPs aren't routable at the
-      // kernel level. Must proxy through tailscaled's SOCKS5 proxy (port 1055).
+      // Coder workspaces use kernel networking (mode: 'kernel'), so Tailscale
+      // IPs are directly routable — no SOCKS5 proxy needed.
       const result = await exec(
         workspaceName,
-        `curl -sS --max-time 10 --socks5 localhost:1055 http://${dockerIp}:8888/ 2>&1`,
+        `curl -sS --max-time 10 http://${dockerIp}:8888/ 2>&1`,
       );
       output = result.stdout;
       if (output.includes(responseBody)) break;

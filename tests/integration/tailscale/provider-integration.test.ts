@@ -35,7 +35,7 @@ import {
 import {
   installSudocode,
   setupTailscale,
-} from '../../../src/provider/codespaces/setup.js';
+} from '../../../src/provider/setup.js';
 
 if (!process.env.RUN_INTEGRATION_TESTS) {
   console.log(

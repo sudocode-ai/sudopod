@@ -9,5 +9,5 @@ export type { ServiceType, ServiceDefinition, ResolvedService } from './registry
 export { getServiceDefinition, resolveService, getBuiltInServiceNames } from './registry.js';
 
 // Manifest
-export type { WorkspaceManifest } from './manifest.js';
-export { MANIFEST_PATH, writeManifest, readManifest } from './manifest.js';
+export type { WorkspaceManifest, BuildManifestOptions } from './manifest.js';
+export { MANIFEST_PATH, buildManifest, writeManifest, readManifest } from './manifest.js';

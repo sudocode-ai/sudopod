@@ -8,7 +8,9 @@
  */
 
 import type { ResolvedService } from './registry.js';
+import { resolveService } from './registry.js';
 import type { ExecFn } from '../provider/types.js';
+import type { ServiceConfig } from '../provider/types.js';
 
 // ============================================================================
 // Types
@@ -46,8 +48,72 @@ export const DEFAULT_MANIFEST_PATH = '/workspaces/.sudopod/manifest.json';
 export const MANIFEST_PATH = DEFAULT_MANIFEST_PATH;
 
 // ============================================================================
+// Build Manifest Options
+// ============================================================================
+
+/**
+ * Options for building a workspace manifest.
+ * Accepts unresolved ServiceConfig entries — services are resolved
+ * internally by buildManifest() using the service registry.
+ */
+export interface BuildManifestOptions {
+  /** Services to resolve and include in the manifest. */
+  services: ServiceConfig[];
+
+  /** Resolved repository directory path. */
+  workspaceDir?: string;
+
+  /** Credentials to store in the manifest. */
+  credentials?: { claudeLtt?: string };
+
+  /**
+   * Tailscale configuration — includes both setup config and
+   * post-setup discovery results (IP, node ID, node name).
+   */
+  tailscale?: {
+    stateDir: string;
+    controlServer?: string;
+    mode?: 'userspace' | 'kernel';
+    ip?: string;
+    nodeId?: string;
+    nodeName?: string;
+  };
+
+  /** Lifecycle configuration. */
+  lifecycle?: { idleTimeoutMinutes?: number };
+
+  /** User setup script (stored for reference). */
+  setupScript?: string;
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
+
+/**
+ * Build a workspace manifest from options.
+ * Resolves service configs via the service registry and constructs
+ * a complete WorkspaceManifest ready to be written to disk.
+ *
+ * This centralizes manifest construction so all providers produce
+ * identical manifests from the same inputs.
+ */
+export function buildManifest(options: BuildManifestOptions): WorkspaceManifest {
+  const resolvedServices = options.services.map(
+    svc => resolveService(svc.name, svc.port),
+  );
+
+  return {
+    version: 1,
+    services: resolvedServices,
+    workspaceDir: options.workspaceDir,
+    credentials: options.credentials,
+    tailscale: options.tailscale,
+    lifecycle: options.lifecycle,
+    setupScript: options.setupScript,
+    createdAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Write a workspace manifest to disk inside the workspace.
