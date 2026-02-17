@@ -1,52 +1,136 @@
-# Testing Guide
+# Testing
 
-## Running Tests
-
-```bash
-npm test                    # Unit tests
-npm run test:integration    # Integration tests
-npm run test:all           # All tests
-```
-
-Run specific test file:
-```bash
-npm test -- tests/unit/path/to/test.test.ts
-npm run test:integration -- tests/integration/path/to/test.test.ts
-```
-
-## Integration Test Setup
-
-Integration tests require GitHub CLI and secrets configuration.
-
-### 1. GitHub CLI
+## Quick Reference
 
 ```bash
-gh auth login
-gh auth status
+npm test                              # Unit tests
+npm run test:e2e                      # E2E tests (Coder: workspace + sudocode server health)
+npm run test:e2e:coder                # E2E tests (Coder: setup + Tailscale + connectivity + resume)
+npm run test:e2e:codespaces           # E2E tests (Codespaces: setup + Tailscale + connectivity + resume)
+npm run test:integration              # All integration tests (provisions both Coder stacks)
+npm run test:integration:coder        # Self-hosted Coder tests (provisions :7080 only)
+npm run test:integration:coder-hub    # Hub Coder tests (provisions :7081 only)
+npm run test:integration:tailscale    # Tailscale infrastructure tests (local tailnet, connectivity)
+npm run test:integration:codespaces   # Codespaces provider tests
+npm run test:integration:client       # Client tests (no infra needed)
 ```
 
-### 2. Secrets Configuration
+Run a specific file:
 
 ```bash
-cp tests/.env.secrets.example tests/.env.secrets
+npx vitest run tests/integration/coder-sdk/hub-user.test.ts --config vitest.integration.coder-hub.config.ts
 ```
 
-Edit `tests/.env.secrets` and add your secrets:
-```
-CLAUDE_AUTH_TOKEN=xxxxx
+## How Infrastructure Auto-Provisioning Works
+
+**You don't need to set env vars or start Docker containers manually for Coder tests.** Each npm integration script uses a vitest config with a global setup file that:
+
+1. Checks if the required Docker containers are already running
+2. If not, runs the full provisioning script (Docker Compose up, admin user creation, template push, API token generation)
+3. Injects `CODER_URL` and `CODER_TOKEN` (or `CODER_HUB_URL`/`CODER_HUB_TOKEN`) as env vars into the vitest process
+4. Runs the tests
+
+So the typical workflow is just:
+
+```bash
+npm run test:integration:coder     # Spins up :7080 if needed, runs tests
+npm run test:integration:coder-hub # Spins up :7081 if needed, runs tests
 ```
 
-Available secrets:
-- **CLAUDE_AUTH_TOKEN**: Claude API token from https://console.anthropic.com/
+First run takes ~60s for provisioning. Subsequent runs reuse the existing containers and are much faster.
+
+**Prerequisites:** Docker must be running and the `refs/coder-infra` submodule must be initialized:
+
+```bash
+git submodule update --init refs/coder-infra
+```
+
+## Integration Test Suites
+
+Each suite has its own vitest config so it only provisions the infrastructure it needs.
+
+| Suite | Config | Auto-Provisions | Prerequisites |
+|-------|--------|-----------------|---------------|
+| **Coder (self-hosted)** | `vitest.integration.coder.config.ts` | Docker stack on `:7080`, injects `CODER_URL`/`CODER_TOKEN` | Docker, `refs/coder-infra` submodule |
+| **Coder (hub)** | `vitest.integration.coder-hub.config.ts` | Docker stack on `:7081`, injects `CODER_HUB_URL`/`CODER_HUB_TOKEN` | Docker, `refs/coder-infra` submodule |
+| **Tailscale** | `vitest.integration.tailscale.config.ts` | Per-test `beforeAll`/`afterAll` | Docker, ngrok, `RUN_INTEGRATION_TESTS=1` |
+| **Codespaces** | `vitest.integration.codespaces.config.ts` | Per-test `beforeAll`/`afterAll` | Docker, ngrok, `gh` CLI, `RUN_INTEGRATION_TESTS=1` |
+| **Client** | `vitest.integration.client.config.ts` | None | Nothing |
+
+The aggregate `vitest.integration.config.ts` runs all suites and provisions both Coder stacks.
+
+## Coder Infrastructure (Manual)
+
+Normally auto-provisioned (see above). Use these commands only if you need to manually reset or tear down the infrastructure.
+
+| Flow | Port | Env Vars (auto-injected) | Compose File |
+|------|------|--------------------------|--------------|
+| Self-hosted | 7080 | `CODER_URL`, `CODER_TOKEN` | `docker-compose.self-hosted.yml` |
+| Hub | 7081 | `CODER_HUB_URL`, `CODER_HUB_TOKEN` | `docker-compose.hub.yml` |
+
+Manual reset (full teardown + reprovision):
+
+```bash
+refs/coder-infra/scripts/self-hosted-testing-setup.sh   # Full reset + provision
+refs/coder-infra/scripts/hub-testing-setup.sh            # Full reset + provision
+```
+
+Teardown only:
+
+```bash
+cd refs/coder-infra
+docker compose -f docker-compose.self-hosted.yml down -v
+docker compose -f docker-compose.hub.yml down -v
+```
+
+## Tailscale / Codespaces Infrastructure
+
+The Coder E2E test (`tests/integration/provider/coder/e2e.test.ts`), codespaces E2E test (`tests/integration/provider/codespaces/e2e.test.ts`), and the tailscale integration tests use a local Headscale control server, ngrok tunnel, and Docker Tailscale client. Each test provisions this infrastructure in `beforeAll()` and tears it down in `afterAll()`.
+
+For faster iteration, use the setup script to bring up the infrastructure once and run the test repeatedly:
+
+```bash
+./scripts/tailscale-infra-setup.sh up      # Start Headscale + ngrok + Docker Tailscale
+./scripts/tailscale-infra-setup.sh down    # Tear everything down
+```
+
+After `up`, the script writes `.env.tailscale-test` with the generated env vars (API keys, ngrok URL, preauthkeys). Note that the E2E test currently provisions its own infra in `beforeAll()` — the script is for manual convenience when iterating.
+
+## AWS Deployments (Live Infrastructure)
+
+In addition to the local Docker stacks, there are two live Coder deployments on AWS for E2E testing against real EC2 workspaces:
+
+| Deployment | URL | Terraform | Env File | Example |
+|------------|-----|-----------|----------|---------|
+| **Self-hosted** | `http://35.163.2.204` | `refs/coder-infra/terraform/self-hosted/` | `.env.coder-self-hosted` | `.env.coder-self-hosted.example` |
+| **Staging hub** | `https://staging.sudocode.ai` | `refs/coder-infra/terraform/staging-hub/` | `.env.coder-staging` | `.env.coder-staging.example` |
+
+**Self-hosted** is a plain EC2 instance running Coder directly (no domain, no TLS). **Staging hub** is a full deployment behind a domain with TLS.
+
+### Setup
+
+1. Copy the example env file and fill in credentials:
+   ```bash
+   cp .env.coder-self-hosted.example .env.coder-self-hosted
+   cp .env.coder-staging.example .env.coder-staging
+   ```
+
+2. Get credentials from the Terraform state or Coder admin UI.
+
+3. Run E2E tests:
+   ```bash
+   # Coder E2E tests (workspace lifecycle + Tailscale + connectivity)
+   npm run test:e2e:coder
+
+   # VS Code Remote-SSH E2E test (Tailscale SSH + VS Code connection)
+   RUN_INTEGRATION_TESTS=1 npx vitest run tests/integration/provider/coder/vscode-e2e.test.ts --config vitest.integration.coder.config.ts
+   ```
+
+The test setup files (`tests/integration/coder-sdk/setup-self-hosted.ts`) load `.env.coder-self-hosted` first, falling back to `.env.coder-staging` if not found.
 
 ## Troubleshooting
 
-**Missing secrets**: Ensure `tests/.env.secrets` exists with format `KEY=value` (no spaces/quotes)
-
-**GitHub auth errors**: Run `gh auth login`
-
-**Test failures**: Failed integration tests preserve codespaces for debugging:
-```bash
-gh codespace list
-gh codespace delete --codespace <name> --force
-```
+- **Tests skip with "CODER_URL not set"**: Docker isn't running or `refs/coder-infra` submodule is missing. Run `git submodule update --init refs/coder-infra`.
+- **Token errors**: Coder was recreated. Re-run the setup script for that flow.
+- **Leftover codespaces**: `gh codespace list` then `gh codespace delete --codespace <name> --force`
+- **Leftover test workspaces**: Check Coder UI at `localhost:7080` or `localhost:7081`.

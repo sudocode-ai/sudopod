@@ -1,26 +1,24 @@
 import { defineConfig } from 'vitest/config';
+import { baseIntegrationTest } from './tests/integration/base-integration-config.js';
 
+/**
+ * Aggregate integration test config — runs ALL integration suites.
+ *
+ * Includes the Coder SDK setup file because the majority of suites
+ * depend on it. Suites that don't need Coder (tailscale, client,
+ * codespaces) gracefully skip when env vars are absent.
+ *
+ * For running individual suites without triggering Coder setup,
+ * use the per-suite configs instead:
+ *   vitest.integration.coder.config.ts
+ *   vitest.integration.tailscale.config.ts
+ *   vitest.integration.codespaces.config.ts
+ *   vitest.integration.client.config.ts
+ */
 export default defineConfig({
   test: {
-    globals: true,
-    environment: 'node',
+    ...baseIntegrationTest,
     include: ['tests/integration/**/*.test.ts'],
     setupFiles: ['tests/integration/coder-sdk/setup.ts'],
-    // Integration tests require longer timeouts
-    testTimeout: 600000, // 10 minutes for builds and deployments
-    hookTimeout: 120000, // 2 minutes for setup/teardown
-    // Run integration tests serially to avoid resource conflicts
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
-    // Disable coverage for integration tests
-    coverage: {
-      enabled: false,
-    },
-    // Stop on first failure to conserve codespace resources
-    bail: 1,
   },
 });

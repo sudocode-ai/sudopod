@@ -16,7 +16,10 @@ export interface CoderTestEnv {
 
 /**
  * Detect self-hosted Coder environment (Flow 1, port 7080).
- * Returns either a valid env or a skip reason with setup instructions.
+ * Returns either a valid env or a skip reason.
+ *
+ * The setup file (setup.ts) auto-provisions infrastructure and sets env vars.
+ * If they're still missing here, Docker or the submodule is unavailable.
  */
 export function getCoderSelfHostedEnv():
   | { env: CoderTestEnv; skipReason?: undefined }
@@ -27,17 +30,11 @@ export function getCoderSelfHostedEnv():
   if (!url || !token) {
     return {
       skipReason: [
-        'Self-hosted Coder not available.',
-        '',
-        'To set up (Flow 1 — Self-Hosted):',
-        '',
-        '  cd refs/coder-infra',
-        '  docker compose -f docker-compose.self-hosted.yml up -d',
-        '  ./scripts/setup-self-hosted.sh',
-        '  eval $(./scripts/get-token.sh --export)',
-        '',
-        'Required env vars: CODER_URL, CODER_TOKEN',
-        'Expected: CODER_URL=http://localhost:7080',
+        'Self-hosted Coder not available (CODER_URL / CODER_TOKEN not set).',
+        'The setup file should auto-provision this. Possible causes:',
+        '  - refs/coder-infra submodule missing: git submodule update --init refs/coder-infra',
+        '  - Docker not running',
+        '  - Setup script failed (check test output above for details)',
       ].join('\n'),
     };
   }
@@ -47,7 +44,10 @@ export function getCoderSelfHostedEnv():
 
 /**
  * Detect hub Coder environment (Flow 2, port 7081).
- * Returns either a valid env or a skip reason with setup instructions.
+ * Returns either a valid env or a skip reason.
+ *
+ * The setup file (setup.ts) auto-provisions infrastructure and sets env vars.
+ * If they're still missing here, Docker or the submodule is unavailable.
  */
 export function getCoderHubEnv():
   | { env: CoderTestEnv; skipReason?: undefined }
@@ -58,18 +58,11 @@ export function getCoderHubEnv():
   if (!url || !token) {
     return {
       skipReason: [
-        'Hub Coder not available.',
-        '',
-        'To set up (Flow 2 — Sudocode-Hub):',
-        '',
-        '  cd refs/coder-infra',
-        '  docker compose -f docker-compose.hub.yml up -d',
-        '  docker compose -f docker-compose.hub.yml logs -f coder-init',
-        '  export CODER_HUB_URL=http://localhost:7081',
-        '  export CODER_HUB_TOKEN=$(docker compose -f docker-compose.hub.yml exec coder-init cat /var/lib/sudopod/admin-token)',
-        '',
-        'Required env vars: CODER_HUB_URL, CODER_HUB_TOKEN',
-        'Expected: CODER_HUB_URL=http://localhost:7081',
+        'Hub Coder not available (CODER_HUB_URL / CODER_HUB_TOKEN not set).',
+        'The setup file should auto-provision this. Possible causes:',
+        '  - refs/coder-infra submodule missing: git submodule update --init refs/coder-infra',
+        '  - Docker not running',
+        '  - Hub init container failed (check test output above for details)',
       ].join('\n'),
     };
   }

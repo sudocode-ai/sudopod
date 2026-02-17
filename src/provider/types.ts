@@ -75,16 +75,16 @@ export interface Provider {
    * Resume/reconnect to an existing workspace.
    * Idempotent - ensures:
    *   1. VM is running (starts if stopped)
-   *   2. Sudocode server is running (starts if not)
+   *   2. Services are running (starts if not, using on-disk manifest)
    *   3. Port forwarding is set up
    *   4. Keepalive is bumped
    *
    * Safe to call multiple times - no-ops if already in desired state.
+   * Runtime config is read from the on-disk workspace manifest.
    *
    * @param workspaceId - Optional. If omitted, resumes the most recently created workspace.
-   * @param options - Runtime options for the session.
    */
-  resume(workspaceId?: string, options?: ResumeOptions): Promise<Workspace>;
+  resume(workspaceId?: string): Promise<Workspace>;
 
   /**
    * Stop a running workspace (pause). VM state is preserved.
@@ -161,9 +161,22 @@ export interface CreateOptions {
 
   /** One-time setup config - applied only during workspace creation */
   setup?: SetupConfig;
+}
 
-  /** Runtime config - also applied during create, and on every resume */
-  runtime?: RuntimeConfig;
+// ============================================================================
+// Service Config
+// ============================================================================
+
+/**
+ * Configuration for a service to install/run in a workspace.
+ * The name must match an entry in the service registry.
+ */
+export interface ServiceConfig {
+  /** Service name — must match a registry entry (e.g., 'sudocode', 'claude-code', 'aider'). */
+  name: string;
+
+  /** Override the registry's default port for this service. */
+  port?: number;
 }
 
 // ============================================================================
@@ -179,19 +192,26 @@ export interface CreateOptions {
  */
 export interface SetupConfig {
   /**
-   * Agents to install during workspace creation.
-   * These are installed once and persist across restarts.
+   * Services to install and optionally run during workspace creation.
+   * Names must match entries in the service registry (e.g., 'sudocode', 'claude-code', 'aider').
+   * Each entry can override the registry's default port.
    */
-  agents?: {
-    install: string[]; // e.g., ['claude']
+  services?: ServiceConfig[];
+
+  /**
+   * Credentials for the workspace.
+   * Configured once during creation.
+   */
+  credentials?: {
+    claudeLtt?: string;
   };
 
   /**
-   * LLM/model configuration for the workspace.
-   * Configured once during creation.
+   * Lifecycle configuration.
    */
-  models?: {
-    claudeLtt?: string;
+  lifecycle?: {
+    /** Minutes of inactivity before allowing workspace to auto-stop. Default: 60. */
+    idleTimeoutMinutes?: number;
   };
 
   /**
@@ -205,6 +225,18 @@ export interface SetupConfig {
    * Example: "npm install -g typescript && pip install torch"
    */
   setupScript?: string;
+
+  /**
+   * Full path to the repository directory inside the workspace.
+   * Used as the working directory when starting services (e.g., sudocode server).
+   *
+   * Default: `/workspaces/${repository.repo}` (derived from CreateOptions.repository)
+   *
+   * This is a full path override — when provided, it replaces the default entirely.
+   * Override this if your devcontainer or Coder template mounts the repo
+   * at a non-standard path.
+   */
+  workspaceDir?: string;
 
   /**
    * Tailscale configuration for private network access.
@@ -229,63 +261,38 @@ export interface SetupConfig {
      * (defaults to Tailscale control plane).
      */
     controlServer?: string;
+
+    /**
+     * Directory for persisting Tailscale daemon state.
+     * Must be on a volume that survives workspace stop/start so that
+     * Tailscale can reconnect automatically without a fresh auth key.
+     *
+     * Default: /workspaces/.tailscale
+     *
+     * @see s-9cl3 design decision #16
+     */
+    stateDir?: string;
+
+    /**
+     * Networking mode for Tailscale.
+     *
+     * - `userspace` (default): Tailscale IPs not kernel-routable, requires SOCKS5 proxy.
+     *   Used for Codespaces where kernel networking modifications aren't allowed.
+     * - `kernel`: Full kernel networking with SSH support. Enables `tailscale up --ssh`
+     *   for VS Code Remote-SSH and direct IP connectivity. Used for Coder workspaces.
+     *
+     * @see s-8gxf - Tailscale Integration spec (Provider-Specific Networking Modes)
+     */
+    mode?: 'userspace' | 'kernel';
+
+    /**
+     * Headscale API key for IP discovery.
+     * When provided, the provider queries Headscale after joining the tailnet
+     * to resolve the workspace's Tailscale IP address and node ID.
+     * Required for self-hosted Headscale; not needed for Tailscale SaaS.
+     */
+    headscaleApiKey?: string;
   };
-}
-
-// ============================================================================
-// Runtime Config (Per-Resume)
-// ============================================================================
-
-/**
- * Runtime config - passed on every resume() call.
- * These are settings needed to reconnect to a workspace.
- *
- * IMPORTANT: This is intentionally minimal. One-time setup (agents, scripts,
- * tailscale) belongs in SetupConfig and is only applied during create().
- */
-export interface RuntimeConfig {
-  /**
-   * Sudocode server port. Default: 3000.
-   * User can override if 3000 conflicts with their application.
-   */
-  port?: number;
-
-  /**
-   * Lifecycle/keepalive configuration.
-   * Can be adjusted on each resume (e.g., user wants different timeout).
-   */
-  lifecycle?: LifecycleConfig;
-}
-
-// ============================================================================
-// Resume Options
-// ============================================================================
-
-/**
- * Config for resuming an existing workspace.
- * Only contains runtime settings - setup is already done.
- */
-export interface ResumeOptions {
-  runtime?: RuntimeConfig;
-}
-
-// ============================================================================
-// Lifecycle Config
-// ============================================================================
-
-/**
- * Lifecycle configuration for workspace keepalive behavior.
- *
- * This defines the desired behavior — how long inactivity is tolerated
- * before the workspace can auto-stop. The mechanism for detecting activity
- * and extending deadlines is an implementation detail of each provider.
- */
-export interface LifecycleConfig {
-  /**
-   * Minutes of sudocode inactivity before allowing workspace to auto-stop.
-   * Default: 60 (1 hour)
-   */
-  idleTimeoutMinutes?: number;
 }
 
 // ============================================================================
@@ -336,16 +343,19 @@ export interface Workspace {
    */
   connection: {
     /**
-     * Tailscale identity — present when workspace was provisioned with tailscale.
-     *
-     * This is identity (which node on the tailnet is this workspace), not
-     * connection details. The user's tailscale client handles discovery and routing.
+     * Tailscale connection info — present when workspace was provisioned with tailscale.
      */
     tailscale?: {
       /** Node name on the tailnet */
       nodeName: string;
       /** Headscale node ID (numeric). Useful for headscale API calls. */
       nodeId: string;
+      /** Tailscale IP address (e.g., "100.64.0.2") */
+      ip: string;
+      /** SSH command via Tailscale (e.g., "ssh root@100.64.0.2") */
+      sshCommand: string;
+      /** VS Code Remote-SSH command (e.g., "code --remote ssh-remote+root@100.64.0.2 /workspaces/repo") */
+      vscodeCommand: string;
     };
 
     /**
@@ -389,3 +399,26 @@ export interface ListWorkspacesOptions {
   /** Maximum results */
   limit?: number;
 }
+
+// ============================================================================
+// Exec Types
+// ============================================================================
+
+/**
+ * Result of executing a command in a workspace via SSH.
+ */
+export interface ExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Function signature for executing commands in a workspace.
+ * Decoupled from provider-specific CLI modules for testability.
+ */
+export type ExecFn = (
+  name: string,
+  command: string,
+  options?: { background?: boolean; timeout?: number }
+) => Promise<ExecResult>;

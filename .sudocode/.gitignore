@@ -3,4 +3,5 @@ issues/
 specs/
 worktrees/
 config.json
+config.local.json
 merge-driver.log

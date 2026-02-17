@@ -9,8 +9,12 @@
 
 export { CoderApiError } from './errors.js';
 export { CoderClient } from './client.js';
+export { CoderOrchestrator } from './orchestrator.js';
+export { createCoderExecFn } from './exec.js';
 export { mapCoderStatusToWorkspaceStatus, mapCoderWorkspaceToWorkspace } from './mapper.js';
 export type { MapWorkspaceOptions } from './mapper.js';
+export type { CoderOrchestratorConfig } from './orchestrator.js';
+export type { CoderExecConfig } from './exec.js';
 
 export type {
   // Client config

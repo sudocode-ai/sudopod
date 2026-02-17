@@ -5,14 +5,13 @@
  *
  * @see s-9cl3 - Unified Workspace Provider Architecture specification
  * @see s-84xz - Codespaces Provider Implementation specification
+ * @see s-4ge4 - Service Registry & Workspace Manifest spec
  */
 
 import type {
   Provider,
   CodespacesConfig,
   CreateOptions,
-  ResumeOptions,
-  RuntimeConfig,
   Workspace,
   WorkspaceStatus,
   ListWorkspacesOptions,
@@ -21,8 +20,6 @@ import {
   WorkspaceNotFoundError,
   WorkspaceCreationError,
   WorkspaceTimeoutError,
-  ExecutionError,
-  AuthenticationError,
 } from '../errors.js';
 import {
   execInCodespace,
@@ -37,8 +34,12 @@ import {
   getPorts,
 } from './cli.js';
 import type { GhCodespace } from './cli.js';
-import { installSudocode, applySetupConfig } from './setup.js';
+import { installSudocode, applySetupConfig, setupTailscale, startServices, DEFAULT_STATE_DIR } from '../setup.js';
 import { generateKeepaliveScript } from './keepalive.js';
+import type { WorkspaceManifest } from '../../services/manifest.js';
+import { buildManifest, writeManifest, readManifest } from '../../services/manifest.js';
+import { HeadscaleClient } from '../../headscale/client.js';
+import type { HeadscaleNode } from '../../headscale/client.js';
 
 const PROVIDER_NAME = 'codespaces';
 
@@ -113,7 +114,9 @@ export class CodespacesProvider implements Provider {
   async create(options: CreateOptions): Promise<Workspace> {
     const repo = `${options.repository.owner}/${options.repository.repo}`;
     const branch = options.repository.branch ?? 'main';
-    const machine = options.machineType ?? 'basicLinux32gb';
+    const machine = (options.machineType && options.machineType !== 'default')
+      ? options.machineType
+      : 'basicLinux32gb';
 
     let codespaceName: string;
     try {
@@ -134,17 +137,56 @@ export class CodespacesProvider implements Provider {
     // Wait for codespace to be available
     await this.waitForStatus(codespaceName, 'running', 300_000);
 
-    // Install sudocode (unconditional prerequisite)
-    await installSudocode(codespaceName, execInCodespace);
+    // Resolve workspace directory early — needed for install and setup
+    const workspaceDir = options.setup?.workspaceDir ?? `/workspaces/${options.repository.repo}`;
 
-    // Apply optional one-time setup config (models, agents, tailscale, scripts)
+    // Install Node.js + sudocode — prerequisite for all workspaces
+    await installSudocode(codespaceName, execInCodespace, workspaceDir);
+
+    // Apply optional one-time setup config (credentials, services, tailscale, scripts)
+    // Codespaces support kernel networking (has /dev/net/tun) — default to kernel mode
+    // for Tailscale so that Tailscale SSH works and IPs are kernel-routable.
     if (options.setup) {
-      await applySetupConfig(codespaceName, execInCodespace, options.setup);
+      const setup = options.setup.tailscale
+        ? { ...options.setup, tailscale: { ...options.setup.tailscale, mode: options.setup.tailscale.mode ?? 'kernel' as const } }
+        : options.setup;
+      await applySetupConfig(codespaceName, execInCodespace, setup, workspaceDir);
     }
 
-    // Apply runtime config (always — starts sudocode server, keepalive, port forwarding)
-    const runtime = options.runtime ?? {};
-    await this.applyRuntimeConfig(codespaceName, runtime);
+    // Discover Tailscale node IP via Headscale API if configured
+    let tailscaleNode: HeadscaleNode | undefined;
+    if (options.setup?.tailscale?.headscaleApiKey && options.setup.tailscale.controlServer) {
+      tailscaleNode = await this.discoverTailscaleNode(
+        options.setup.tailscale.controlServer,
+        options.setup.tailscale.headscaleApiKey,
+        codespaceName,
+      );
+    }
+
+    // Build manifest from setup config + Tailscale discovery
+    const manifest = buildManifest({
+      services: options.setup?.services ?? [],
+      workspaceDir,
+      credentials: options.setup?.credentials,
+      tailscale: options.setup?.tailscale
+        ? {
+            stateDir: options.setup.tailscale.stateDir ?? DEFAULT_STATE_DIR,
+            controlServer: options.setup.tailscale.controlServer,
+            mode: options.setup.tailscale.mode ?? 'kernel',
+            ip: tailscaleNode?.ipAddresses[0],
+            nodeId: tailscaleNode?.id,
+            nodeName: tailscaleNode?.givenName,
+          }
+        : undefined,
+      lifecycle: options.setup?.lifecycle,
+      setupScript: options.setup?.setupScript,
+    });
+
+    // Write manifest to disk
+    await writeManifest(codespaceName, execInCodespace, manifest);
+
+    // Apply runtime — start services, health check, keepalive, port forward
+    await this.applyManifestRuntime(codespaceName, manifest);
 
     // Fetch final state and return
     const cs = await getCodespace(codespaceName);
@@ -152,21 +194,21 @@ export class CodespacesProvider implements Provider {
       throw new WorkspaceNotFoundError(PROVIDER_NAME, codespaceName);
     }
 
-    const port = runtime.port ?? 3000;
     const urls: Record<string, string> = {};
-    try {
-      urls.sudocode = await getPortUrl(codespaceName, port);
-    } catch {
-      // Port URL not available — non-fatal
+    const sudocodeSvc = manifest.services.find(s => s.name === 'sudocode');
+    if (sudocodeSvc?.port) {
+      try {
+        urls.sudocode = await getPortUrl(codespaceName, sudocodeSvc.port);
+      } catch {
+        // Port URL not available — non-fatal
+      }
     }
 
-    return mapToWorkspace(cs, urls);
+    const workspace = mapToWorkspace(cs, urls);
+    return this.enrichWithTailscale(workspace, manifest);
   }
 
-  async resume(
-    workspaceId?: string,
-    options?: ResumeOptions
-  ): Promise<Workspace> {
+  async resume(workspaceId?: string): Promise<Workspace> {
     // If no workspaceId, get the most recently created codespace
     let name = workspaceId;
     if (!name) {
@@ -207,9 +249,37 @@ export class CodespacesProvider implements Provider {
       await this.waitForStatus(name, 'running', 120_000);
     }
 
-    // Apply runtime config (always — starts sudocode server, keepalive, port forwarding)
-    const runtime = options?.runtime ?? {};
-    await this.applyRuntimeConfig(name, runtime);
+    // Read manifest from disk
+    const manifest = await readManifest(name, execInCodespace);
+
+    if (manifest) {
+      // Reconnect Tailscale if manifest has tailscale config
+      if (manifest.tailscale) {
+        const stateDir = manifest.tailscale.stateDir ?? DEFAULT_STATE_DIR;
+        const mode = manifest.tailscale.mode ?? 'kernel';
+        // Check for persisted state — file path differs by mode:
+        //   kernel: --statedir creates dir with tailscaled.state inside
+        //   userspace: --state points directly to the file
+        const stateFile = `${stateDir}/tailscaled.state`;
+        const stateCheck = await execInCodespace(
+          name,
+          `test -f ${stateFile} && echo exists`,
+        );
+        if (stateCheck.stdout.trim() === 'exists') {
+          await setupTailscale(name, execInCodespace, {
+            stateDir,
+            controlServer: manifest.tailscale.controlServer,
+            mode,
+          });
+        }
+      }
+
+      // Apply runtime from manifest
+      await this.applyManifestRuntime(name, manifest);
+    } else {
+      // Legacy fallback — pre-manifest workspace
+      await this.applyLegacyRuntimeConfig(name);
+    }
 
     // Fetch final state
     const updated = await getCodespace(name);
@@ -217,7 +287,8 @@ export class CodespacesProvider implements Provider {
       throw new WorkspaceNotFoundError(PROVIDER_NAME, name);
     }
 
-    const port = runtime.port ?? 3000;
+    // Get primary service port from manifest, or default 3000 for legacy
+    const port = manifest?.services.find(s => s.name === 'sudocode')?.port ?? 3000;
     const urls: Record<string, string> = {};
     try {
       urls.sudocode = await getPortUrl(name, port);
@@ -225,7 +296,8 @@ export class CodespacesProvider implements Provider {
       // Port URL not available — non-fatal
     }
 
-    return mapToWorkspace(updated, urls);
+    const workspace = mapToWorkspace(updated, urls);
+    return manifest ? this.enrichWithTailscale(workspace, manifest) : workspace;
   }
 
   async stop(workspaceId: string): Promise<void> {
@@ -299,13 +371,49 @@ export class CodespacesProvider implements Provider {
   // ===========================================================================
 
   /**
-   * Apply runtime configuration: start sudocode server, keepalive, port forwarding.
+   * Apply runtime from a workspace manifest.
+   * Starts services, waits for ports, sets up keepalive, forwards ports.
    */
-  private async applyRuntimeConfig(
+  private async applyManifestRuntime(
     name: string,
-    runtime: RuntimeConfig
+    manifest: WorkspaceManifest,
   ): Promise<void> {
-    const port = runtime.port ?? 3000;
+    // Start all services
+    const startedPorts = await startServices(name, execInCodespace, manifest.services, manifest.workspaceDir);
+
+    // Wait for each service port to be ready
+    for (const port of startedPorts) {
+      await this.waitForPort(name, port, 60_000);
+    }
+
+    // Keepalive using primary service (sudocode) port
+    const primaryPort = manifest.services.find(s => s.name === 'sudocode')?.port ?? 3000;
+    const idleTimeout = manifest.lifecycle?.idleTimeoutMinutes ?? 240;
+    await this.ensureKeepaliveDaemon(name, primaryPort, idleTimeout);
+
+    // Forward all service ports
+    for (const port of startedPorts) {
+      await forwardPort(name, port);
+    }
+  }
+
+  /**
+   * Legacy fallback for pre-manifest workspaces.
+   * Hardcodes sudocode on port 3000.
+   * @deprecated Will be removed once all workspaces have manifests.
+   */
+  private async applyLegacyRuntimeConfig(name: string): Promise<void> {
+    const port = 3000;
+
+    // Reconnect Tailscale if persisted state exists
+    const stateDir = DEFAULT_STATE_DIR;
+    const stateCheck = await execInCodespace(
+      name,
+      `test -f ${stateDir}/tailscaled.state && echo exists`,
+    );
+    if (stateCheck.stdout.trim() === 'exists') {
+      await setupTailscale(name, execInCodespace, { stateDir });
+    }
 
     // Check if sudocode server is already running
     const check = await execInCodespace(
@@ -314,31 +422,20 @@ export class CodespacesProvider implements Provider {
     );
 
     if (!check.stdout.trim()) {
-      // Start sudocode server in the background.
-      // { background: true } places & outside the SSH quotes so the SSH session
-      // returns immediately. nohup ensures the process persists after SSH exit.
       await execInCodespace(
         name,
         `nohup sudocode server --port ${port} > /tmp/sudocode-${port}.log 2>&1`,
         { background: true }
       );
-
-      // Wait for server to be ready (60s — server init can be slow on cold codespaces)
       await this.waitForPort(name, port, 60_000);
     }
 
-    // Ensure keepalive daemon is running
-    await this.ensureKeepaliveDaemon(name, runtime);
-
-    // Forward port
+    await this.ensureKeepaliveDaemon(name, port, 240);
     await forwardPort(name, port);
   }
 
   /**
-   * Wait for the sudocode server port to be accepting connections.
-   *
-   * Tries both the root path and /health endpoint for compatibility.
-   * The sudocode server serves a frontend app at / (not a REST /health endpoint).
+   * Wait for a port to be accepting connections.
    */
   private async waitForPort(
     name: string,
@@ -362,11 +459,9 @@ export class CodespacesProvider implements Provider {
    */
   private async ensureKeepaliveDaemon(
     name: string,
-    runtime: RuntimeConfig
+    port: number,
+    idleTimeoutMinutes: number,
   ): Promise<void> {
-    const port = runtime.port ?? 3000;
-    const idleTimeout = runtime.lifecycle?.idleTimeoutMinutes ?? 60;
-
     // Check if daemon is already running
     const check = await execInCodespace(
       name,
@@ -375,7 +470,7 @@ export class CodespacesProvider implements Provider {
     if (check.stdout.trim()) return;
 
     // Generate and deploy the script
-    const script = generateKeepaliveScript(name, port, idleTimeout);
+    const script = generateKeepaliveScript(name, port, idleTimeoutMinutes);
     const encoded = Buffer.from(script).toString('base64');
 
     await execInCodespace(
@@ -388,6 +483,66 @@ export class CodespacesProvider implements Provider {
       'nohup /tmp/sudocode-keepalive.sh > /tmp/sudocode-keepalive.log 2>&1',
       { background: true }
     );
+  }
+
+  /**
+   * Discover a workspace's Tailscale node in Headscale by hostname.
+   * Polls with retry because the node may take a few seconds to appear
+   * after `tailscale up` completes.
+   */
+  private async discoverTailscaleNode(
+    controlServer: string,
+    apiKey: string,
+    hostname: string,
+    timeoutMs = 30_000,
+  ): Promise<HeadscaleNode> {
+    const headscale = new HeadscaleClient({ baseUrl: controlServer, apiKey });
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      const nodes = await headscale.listNodes();
+      const node = nodes.find(n => n.givenName === hostname);
+      if (node && node.ipAddresses.length > 0) {
+        return node;
+      }
+      await sleep(2_000);
+    }
+
+    throw new WorkspaceTimeoutError(PROVIDER_NAME, 'discoverTailscaleNode', timeoutMs);
+  }
+
+  /**
+   * Enrich a Workspace with Tailscale connection info from the manifest.
+   */
+  private enrichWithTailscale(workspace: Workspace, manifest: WorkspaceManifest): Workspace {
+    if (!manifest.tailscale?.ip || !manifest.tailscale?.nodeId) {
+      return workspace;
+    }
+
+    const ip = manifest.tailscale.ip;
+    const workDir = manifest.workspaceDir ?? `/workspaces/${workspace.repository.repo || 'workspace'}`;
+    const nodeName = manifest.tailscale.nodeName ?? workspace.name;
+
+    return {
+      ...workspace,
+      connection: {
+        ...workspace.connection,
+        tailscale: {
+          nodeName,
+          nodeId: manifest.tailscale.nodeId,
+          ip,
+          sshCommand: `ssh root@${ip}`,
+          vscodeCommand: `code --remote ssh-remote+root@${ip} ${workDir}`,
+        },
+        ssh: {
+          command: `ssh root@${ip}`,
+        },
+        urls: {
+          ...workspace.connection.urls,
+          vscode: `code --remote ssh-remote+root@${ip} ${workDir}`,
+        },
+      },
+    };
   }
 
   /**
