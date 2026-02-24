@@ -34,6 +34,7 @@ import {
   ConfigurationError,
 } from '../provider/errors.js';
 import { installSudocode, applySetupConfig, setupTailscale, startServices } from '../provider/setup.js';
+import { printStep } from '../cli/output.js';
 import { buildManifest, writeManifest, readManifest } from '../services/manifest.js';
 import type { WorkspaceManifest } from '../services/manifest.js';
 import { HeadscaleClient } from '../headscale/client.js';
@@ -146,6 +147,7 @@ export class CoderOrchestrator {
       const richParameterValues = this.buildRichParameters(options);
 
       // Create workspace as "me"
+      printStep('Creating workspace...');
       const coderWorkspace = await this.client.createWorkspace({
         organizationId,
         username: 'me',
@@ -156,6 +158,7 @@ export class CoderOrchestrator {
       });
 
       // Wait for workspace to be running
+      printStep('Waiting for workspace to start...');
       const ready = await this.client.waitForWorkspaceStatus({
         workspaceId: coderWorkspace.id,
         targetStatus: 'running',
@@ -197,6 +200,7 @@ export class CoderOrchestrator {
       // Discover Tailscale IP via Headscale API if configured
       let tailscaleNode: HeadscaleNode | undefined;
       if (options.setup?.tailscale?.headscaleApiKey && options.setup.tailscale.controlServer) {
+        printStep('Discovering Tailscale node...');
         tailscaleNode = await this.discoverTailscaleNode(
           options.setup.tailscale.controlServer,
           options.setup.tailscale.headscaleApiKey,
@@ -223,9 +227,11 @@ export class CoderOrchestrator {
         setupScript: options.setup?.setupScript,
       });
 
+      printStep('Writing workspace manifest...');
       await writeManifest(workspaceName, this.exec, manifest, CODER_MANIFEST_PATH);
 
       // Apply runtime — start services, wait for ports
+      printStep('Starting services...');
       await this.applyManifestRuntime(workspaceName, manifest);
 
       const workspace = mapCoderWorkspaceToWorkspace(ready, { baseUrl: this.baseUrl });
@@ -255,7 +261,9 @@ export class CoderOrchestrator {
 
       // If stopped, start it
       if (status === 'stopped') {
+        printStep('Starting workspace...');
         await this.client.startWorkspace(workspaceId);
+        printStep('Waiting for workspace to start...');
         const ready = await this.client.waitForWorkspaceStatus({
           workspaceId,
           targetStatus: 'running',
@@ -394,6 +402,7 @@ export class CoderOrchestrator {
     // Reconnect Tailscale if manifest has tailscale config.
     // Always attempt — setupTailscale handles all tiers (installed, not installed).
     if (manifest.tailscale) {
+      printStep('Reconnecting Tailscale...');
       const stateDir = manifest.tailscale.stateDir ?? CODER_TAILSCALE_STATE_DIR;
       await setupTailscale(name, this.exec, {
         stateDir,
@@ -410,6 +419,7 @@ export class CoderOrchestrator {
       );
     }
 
+    printStep('Starting services...');
     await this.applyManifestRuntime(name, manifest);
     return manifest;
   }

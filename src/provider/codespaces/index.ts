@@ -35,6 +35,7 @@ import {
 } from './cli.js';
 import type { GhCodespace } from './cli.js';
 import { installSudocode, applySetupConfig, setupTailscale, startServices, DEFAULT_STATE_DIR } from '../setup.js';
+import { printStep } from '../../cli/output.js';
 import { generateKeepaliveScript } from './keepalive.js';
 import type { WorkspaceManifest } from '../../services/manifest.js';
 import { buildManifest, writeManifest, readManifest } from '../../services/manifest.js';
@@ -135,6 +136,7 @@ export class CodespacesProvider implements Provider {
     }
 
     // Wait for codespace to be available
+    printStep('Waiting for codespace to start...');
     await this.waitForStatus(codespaceName, 'running', 300_000);
 
     // Resolve workspace directory early — needed for install and setup
@@ -156,6 +158,7 @@ export class CodespacesProvider implements Provider {
     // Discover Tailscale node IP via Headscale API if configured
     let tailscaleNode: HeadscaleNode | undefined;
     if (options.setup?.tailscale?.headscaleApiKey && options.setup.tailscale.controlServer) {
+      printStep('Discovering Tailscale node...');
       tailscaleNode = await this.discoverTailscaleNode(
         options.setup.tailscale.controlServer,
         options.setup.tailscale.headscaleApiKey,
@@ -183,6 +186,7 @@ export class CodespacesProvider implements Provider {
     });
 
     // Write manifest to disk
+    printStep('Writing workspace manifest...');
     await writeManifest(codespaceName, execInCodespace, manifest);
 
     // Apply runtime — start services, health check, keepalive, port forward
@@ -237,6 +241,7 @@ export class CodespacesProvider implements Provider {
 
     // Start if stopped
     if (status === 'stopped') {
+      printStep('Starting codespace...');
       try {
         await startCodespace(name);
       } catch (error) {
@@ -246,6 +251,7 @@ export class CodespacesProvider implements Provider {
           error instanceof Error ? error : undefined
         );
       }
+      printStep('Waiting for codespace to start...');
       await this.waitForStatus(name, 'running', 120_000);
     }
 
@@ -266,6 +272,7 @@ export class CodespacesProvider implements Provider {
           `test -f ${stateFile} && echo exists`,
         );
         if (stateCheck.stdout.trim() === 'exists') {
+          printStep('Reconnecting Tailscale...');
           await setupTailscale(name, execInCodespace, {
             stateDir,
             controlServer: manifest.tailscale.controlServer,
@@ -379,19 +386,23 @@ export class CodespacesProvider implements Provider {
     manifest: WorkspaceManifest,
   ): Promise<void> {
     // Start all services
+    printStep('Starting services...');
     const startedPorts = await startServices(name, execInCodespace, manifest.services, manifest.workspaceDir);
 
     // Wait for each service port to be ready
     for (const port of startedPorts) {
+      printStep(`Waiting for port ${port}...`);
       await this.waitForPort(name, port, 60_000);
     }
 
     // Keepalive using primary service (sudocode) port
+    printStep('Setting up keepalive...');
     const primaryPort = manifest.services.find(s => s.name === 'sudocode')?.port ?? 3000;
     const idleTimeout = manifest.lifecycle?.idleTimeoutMinutes ?? 240;
     await this.ensureKeepaliveDaemon(name, primaryPort, idleTimeout);
 
     // Forward all service ports
+    printStep('Forwarding ports...');
     for (const port of startedPorts) {
       await forwardPort(name, port);
     }

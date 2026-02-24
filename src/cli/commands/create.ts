@@ -4,7 +4,7 @@ import type { CreateOptions, ServiceConfig } from '../../provider/types.js';
 import type { CommandContext } from '../types.js';
 import { loadConfig } from '../config.js';
 import { HeadscaleClient } from '../../headscale/client.js';
-import { printWorkspace, printJson, serializeWorkspace, printError } from '../output.js';
+import { printWorkspace, printJson, serializeWorkspace, printError, setQuiet, printStep } from '../output.js';
 
 export interface CreateCommandOptions {
   repo?: string;
@@ -22,8 +22,10 @@ export async function handleCreate(
   opts: CreateCommandOptions
 ): Promise<void> {
   try {
+    setQuiet(ctx.jsonOutput);
     const [owner, repo] = opts.repo ? parseRepo(opts.repo) : detectRepo();
     const branch = opts.branch ?? detectBranch();
+    printStep(`Creating workspace for ${owner}/${repo} (${branch})...`);
     const name = generateName(repo, branch);
 
     // Auto-generate tailscale preauthkey if --tailscale flag is set

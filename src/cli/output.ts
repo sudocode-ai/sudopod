@@ -1,6 +1,17 @@
 import chalk from 'chalk';
 import type { Workspace, WorkspaceStatus } from '../provider/types.js';
 
+let quiet = false;
+
+export function setQuiet(flag: boolean): void {
+  quiet = flag;
+}
+
+export function printStep(message: string): void {
+  if (quiet) return;
+  console.error(chalk.dim(`→ ${message}`));
+}
+
 export function formatStatus(status: WorkspaceStatus): string {
   switch (status) {
     case 'running':

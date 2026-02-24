@@ -15,6 +15,7 @@ import type { SetupConfig, ExecFn, ExecResult } from './types.js';
 import type { ResolvedService } from '../services/registry.js';
 import { getServiceDefinition } from '../services/registry.js';
 import { ExecutionError } from './errors.js';
+import { printStep } from '../cli/output.js';
 
 export type { ExecFn };
 
@@ -76,6 +77,7 @@ export async function installSudocode(
   exec: ExecFn,
   workspaceDir?: string,
 ): Promise<void> {
+  printStep('Installing Node.js and sudocode...');
   // Ensure Node.js >= 18 is available, then install sudocode.
   //
   // Strategy (tried in order):
@@ -128,6 +130,7 @@ export async function applySetupConfig(
 ): Promise<void> {
   // 1. Configure credentials
   if (setup.credentials?.claudeLtt) {
+    printStep('Configuring credentials...');
     await exec(workspaceName, 'mkdir -p ~/.claude ~/.config/claude');
     const creds = JSON.stringify({
       claudeAiOauth: {
@@ -148,6 +151,7 @@ export async function applySetupConfig(
   if (setup.services?.length) {
     const cdPrefix = workspaceDir ? `cd ${workspaceDir} && ` : '';
     for (const svc of setup.services) {
+      printStep(`Installing service: ${svc.name}...`);
       const def = getServiceDefinition(svc.name);
       if (!def) {
         throw new ExecutionError('setup', `Unknown service: ${svc.name}`, 1, '');
@@ -160,6 +164,7 @@ export async function applySetupConfig(
 
   // 3. Configure Tailscale
   if (setup.tailscale) {
+    printStep('Setting up Tailscale...');
     await setupTailscale(workspaceName, exec, {
       authKey: setup.tailscale.authKey,
       controlServer: setup.tailscale.controlServer,
@@ -170,6 +175,7 @@ export async function applySetupConfig(
 
   // 4. Run user setup script
   if (setup.setupScript) {
+    printStep('Running setup script...');
     await exec(workspaceName, setup.setupScript);
   }
 }
@@ -338,6 +344,7 @@ export async function setupTailscale(
 
   if (whichResult.exitCode !== 0) {
     // === TIER 3: Not installed ===
+    printStep('Installing Tailscale...');
     // Remove broken apt repos that block apt-get update (idempotent)
     await exec(workspaceName, 'sudo rm -f /etc/apt/sources.list.d/yarn.list');
 
@@ -359,7 +366,9 @@ export async function setupTailscale(
     // Remove the policy so normal service management works
     await exec(workspaceName, 'sudo rm -f /usr/sbin/policy-rc.d');
 
+    printStep('Starting Tailscale daemon...');
     await startTailscaleDaemon(workspaceName, exec, stateDir, mode);
+    printStep('Joining tailnet...');
     await joinTailnet(exec, workspaceName, upCmd);
 
     return { tier: 'installed', hostname: workspaceName };
@@ -377,13 +386,16 @@ export async function setupTailscale(
 
   if (!daemonIsRunning) {
     // === TIER 2: Installed but daemon not running ===
+    printStep('Starting Tailscale daemon...');
     await startTailscaleDaemon(workspaceName, exec, stateDir, mode);
+    printStep('Joining tailnet...');
     await joinTailnet(exec, workspaceName, upCmd);
 
     return { tier: 'started-daemon', hostname: workspaceName };
   }
 
   // === TIER 1: Already installed and running ===
+  printStep('Joining tailnet...');
   await joinTailnet(exec, workspaceName, upCmd);
 
   return { tier: 'already-running', hostname: workspaceName };
